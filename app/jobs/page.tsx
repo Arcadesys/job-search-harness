@@ -42,9 +42,9 @@ export default async function JobsPage() {
     </header>
     {storageError ? <section role="status" style={panel}><h2>Private database unavailable</h2><p>{storageError}</p></section> : <>
       <section aria-labelledby="run-status" style={panel}>
-        <h2 id="run-status">Daily discovery status</h2>
-        <p><strong>This month:</strong> {String(status?.usage?.callsUsed ?? 0)} of {String(status?.usage?.callCap ?? 300)} search calls used</p>
-        <form action={runJobSearchNow} style={{ marginBlock: '1rem' }}><button type="submit" style={button}>Scan now</button><span style={{ marginInlineStart: '0.75rem' }}>One scan per UTC date; another request today reports the existing run.</span></form>
+        <h2 id="run-status">Daily Google Alerts status</h2>
+        <p><strong>This month:</strong> {String(status?.usage?.callsUsed ?? 0)} of {String(status?.usage?.callCap ?? 300)} feed polls used</p>
+        <form action={runJobSearchNow} style={{ marginBlock: '1rem' }}><button type="submit" style={button}>Scan feeds now</button><span style={{ marginInlineStart: '0.75rem' }}>One successful scan per UTC date; a failed scan can be retried.</span></form>
         <div style={columns}>{(status?.runs ?? []).map((run: any) => <div key={String(run.date)} style={{ border: '1px solid #aaaabd', borderRadius: 8, padding: '0.75rem' }}>
           <strong>{String(run.date)} · {String(run.status).toUpperCase()}</strong><br />Started {dateText(run.startedAt)}<br />Queries {String(run.queriesAttempted)} · leads {String(run.newLeads)} · calls {String(run.callsUsed)}
           {run.errorMessage ? <p role="status"><strong>Failure:</strong> {String(run.errorMessage)}</p> : null}
@@ -65,15 +65,16 @@ export default async function JobsPage() {
       </section>
 
       <section aria-labelledby="queries" style={panel}>
-        <h2 id="queries">Daily search queries</h2>
-        <p>Six editable searches cover AI developer, forward-deployed engineering, and technical program/product ownership in Chicago and remote roles.</p>
+        <h2 id="queries">Google Alerts feeds</h2>
+        <p>Create six alerts at <a href="https://www.google.com/alerts" target="_blank" rel="noreferrer">Google Alerts ↗</a>, set each delivery to RSS, and paste its feed URL below. The terms here are a reference; changing them here does not edit the matching Google Alert. Feed entries are discovery hints, not verified openings.</p>
         <form action={editSearchQueries}>
           <div style={columns}>{queries.map((query: any) => <fieldset key={String(query.id)} style={{ border: '1px solid #aaaabd', borderRadius: 8, padding: '0.75rem' }}>
             <legend style={{ fontWeight: 700 }}>{String(query.lane)} · {String(query.location)}</legend>
-            <label style={labelStyle}>Search terms<textarea name={`query:${query.id}`} required minLength={8} maxLength={500} rows={3} defaultValue={String(query.query)} style={field} /></label>
-            <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', minHeight: 48 }}><input name={`enabled:${query.id}`} type="checkbox" defaultChecked={Boolean(query.enabled)} style={{ width: 24, height: 24 }} />Run this query daily</label>
+            <label style={labelStyle}>Alert terms (reference)<textarea name={`query:${query.id}`} required minLength={8} maxLength={500} rows={3} defaultValue={String(query.query)} style={field} /></label>
+            <label style={labelStyle}>Google Alert RSS URL<input name={`feed:${query.id}`} type="url" placeholder="https://www.google.com/alerts/feeds/…" defaultValue={String(query.feedUrl ?? '')} style={field} /></label>
+            <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', minHeight: 48 }}><input name={`enabled:${query.id}`} type="checkbox" defaultChecked={Boolean(query.enabled)} style={{ width: 24, height: 24 }} />Poll this feed daily</label>
           </fieldset>)}</div>
-          <button type="submit" style={button}>Save queries</button>
+          <button type="submit" style={button}>Save Google Alerts feeds</button>
         </form>
       </section>
 

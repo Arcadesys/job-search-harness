@@ -24,7 +24,7 @@ export async function updateJobLead(form: FormData) {
 export async function editSearchQueries(form: FormData) {
   await requireJobsAccount();
   const ids = ['ai-chicago', 'ai-remote', 'fde-chicago', 'fde-remote', 'product-chicago', 'product-remote'];
-  await saveSearchQueries(ids.map((id) => ({ id, query: value(form, `query:${id}`), enabled: form.get(`enabled:${id}`) === 'on' })));
+  await saveSearchQueries(ids.map((id) => ({ id, query: value(form, `query:${id}`), feedUrl: value(form, `feed:${id}`), enabled: form.get(`enabled:${id}`) === 'on' })));
   revalidatePath('/jobs');
 }
 

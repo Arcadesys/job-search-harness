@@ -1,0 +1,31 @@
+.jobsWorkspace :focus-visible {
+  outline: 4px solid #ffcf40;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.jobsWorkspace, .jobsWorkspace * {
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.jobsWorkspace details > summary {
+  cursor: pointer;
+  min-height: 56px;
+  padding: 0.75rem;
+  font-weight: 700;
+}
+
+.jobsWorkspace a {
+  color: #fff;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+@media (max-width: 480px) {
+  .jobsWorkspace {
+    padding-inline: 1rem;
+  }
+}

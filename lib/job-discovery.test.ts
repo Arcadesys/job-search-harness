@@ -161,7 +161,7 @@ test('private page actions authorize reads and writes and cron endpoint validate
     readFile(new URL('../app/api/jobs/drafting-export/route.ts', import.meta.url), 'utf8'),
   ]);
   assert.match(page, /await requireJobsAccount\(\)/);
-  assert.equal((actions.match(/await requireJobsAccount\(\)/g) ?? []).length, 4);
+  assert.equal((actions.match(/await requireJobsAccount\(\)/g) ?? []).length, 8);
   assert.match(route, /CRON_SECRET/);
   assert.match(route, /timingSafeEqual/);
   assert.match(exportRoute, /await requireJobsAccount\(\)/);

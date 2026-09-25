@@ -25,6 +25,9 @@ test('weekly counts use dated lead records and explicit outcome events with revi
   assert.deepEqual(JSON.parse(payload).map((week: { week_start: string }) => week.week_start), ['2026-09-14', '2026-09-21']);
   assert.match(statement, /date_trunc\('week', discovered_at AT TIME ZONE\s+\?/);
   assert.match(statement, /count\(\*\) FILTER \(WHERE event_type='reply'\)/);
+  assert.match(statement, /FROM job_application_receipts GROUP BY 1/);
+  assert.match(statement, /coalesce\(a\.applications,0\)::int AS applications/);
+  assert.doesNotMatch(statement, /FILTER \(WHERE event_type='application'\)/);
   assert.match(statement, /LEFT JOIN job_review_weeks/);
   assert.match(statement, /reviewed_at AS "reviewedAt"/);
 });
@@ -39,6 +42,7 @@ test('dated activity records are explicit, constrained, tied to a lead, and idem
   assert.match(statement, /ON CONFLICT \(lead_id,event_type,occurred_on\) DO UPDATE/);
   assert.ok(values.includes('lead-a'));
   await assert.rejects(() => recordReviewEvent({ leadId: 'lead-a', type: 'reply-by-guess', date: '2026-09-24' }, fake), /supported activity/);
+  await assert.rejects(() => recordReviewEvent({ leadId: 'lead-a', type: 'application', date: '2026-09-24' }, fake), /supported activity/);
   await assert.rejects(() => recordReviewEvent({ leadId: 'lead-a', type: 'offer', date: '2999-01-01' }, fake), /only after its date/);
   await assert.rejects(() => recordReviewEvent({ leadId: 'lead-a', type: 'reply', date: '2026-02-30' }, fake), /valid activity date/);
 });
@@ -61,4 +65,6 @@ test('review route and both mutations require the authorized jobs account', asyn
   assert.equal((actions.match(/await requireJobsAccount\(\)/g) ?? []).length, 2);
   assert.match(page, /JOB_REVIEW_TIME_ZONE/);
   assert.match(page, /Not recorded/);
+  assert.match(page, /Applications are counted from confirmed submission receipts/);
+  assert.doesNotMatch(page, /option value="application"/);
 });

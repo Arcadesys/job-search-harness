@@ -74,3 +74,16 @@
 .jobsTruthStats dd { margin:0; color:var(--jobs-accent); font-size:1.15rem; font-weight:800; }
 .jobsTruthList button[aria-current="true"] { border-color:var(--jobs-accent); box-shadow:inset 4px 0 var(--jobs-accent); }
 @media(max-width:760px) { .jobsSidebar nav ul { flex-wrap:wrap; overflow:visible; } }
+.jobsBatchSelector { margin:0 0 1.25rem; }
+.jobsBatchSelector fieldset { margin:0 0 1rem; }
+.jobsBatchChoices { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:.5rem; max-height:24rem; overflow:auto; }
+.jobsBatchChoice { display:flex!important; align-items:center; gap:.75rem; min-height:64px; padding:.65rem .75rem; border:1px solid var(--jobs-border); border-radius:.5rem; cursor:pointer; }
+.jobsBatchChoice input { flex:0 0 28px; width:28px; height:28px; margin:0!important; accent-color:var(--jobs-accent); }
+.jobsBatchChoice span { display:grid; gap:.1rem; }
+.jobsBatchChoice small,.jobsTokenList span { display:block; color:var(--jobs-muted); font-size:.9rem; font-weight:500; }
+.jobsTokenPanel { margin-top:1rem; }
+.jobsTokenPanel h3 { margin:1.5rem 0 .5rem; }
+.jobsOneTimeToken textarea { min-height:6rem; font-family:ui-monospace,monospace!important; overflow-wrap:anywhere; }
+.jobsTokenList { list-style:none; padding:0; margin:0; display:grid; gap:.5rem; }
+.jobsTokenList li { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; padding:.75rem; border:1px solid var(--jobs-border); border-radius:.5rem; }
+.jobsTokenList button { min-width:7rem; }

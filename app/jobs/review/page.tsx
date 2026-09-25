@@ -12,7 +12,7 @@ const button: React.CSSProperties = { minHeight: 56, padding: '0.6rem 1rem', fon
 const stats: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '0.75rem' };
 const label: React.CSSProperties = { display: 'block', fontWeight: 700, marginTop: '0.4rem' };
 const metrics = [
-  ['leads', 'Leads discovered'], ['kept', 'Roles kept'], ['applications', 'Applications'],
+  ['leads', 'Leads discovered'], ['kept', 'Roles pursued'], ['applications', 'Applications'],
   ['replies', 'Replies'], ['interviews', 'Interviews'], ['offers', 'Offers'],
 ] as const;
 const addDays = (date: string, days: number) => { const d = new Date(`${date}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
@@ -28,15 +28,15 @@ export default async function WeeklyReviewPage() {
       <p className="jobsEyebrow">Activity</p>
       <h1>Weekly review</h1>
       <p>Weeks run Monday through Sunday in Central Time ({JOB_REVIEW_TIME_ZONE}). Reporting window: {weeks[0]} through {addDays(weeks.at(-1)!, 6)}.</p>
-      <p>Leads discovered come from dated lead records. Keeps and outcomes count only dated events you record. An open week shows unrecorded outcomes as unknown; mark it reviewed after recording all known activity to make zero an explicit zero.</p>
+      <p>Leads discovered come from dated lead records. Applications count only employer confirmation receipts recorded by the job-hunt workflow; pursued roles and other outcomes count from dated activity. An open week shows unrecorded outcomes as unknown; mark it reviewed after recording all known activity to make zero an explicit zero.</p>
     </header>
 
     <section aria-labelledby="record-activity" style={panel}>
       <h2 id="record-activity">Record dated activity</h2>
-      <p>Record only what happened, with the date you know. Reply, interview, and offer events are never inferred from application stages or time passed.</p>
+      <p>Record only what happened, with the date you know. Applications are counted from confirmed submission receipts. Reply, interview, and offer events are never inferred from application stages or time passed.</p>
       <form action={addReviewEvent} style={stats}>
         <label style={label}>Lead<select name="leadId" required defaultValue="" style={field}><option value="" disabled>Choose a lead</option>{leads.map((lead: any) => <option key={String(lead.id)} value={String(lead.id)}>{String(lead.title)}{lead.organization ? ` — ${String(lead.organization)}` : ''}</option>)}</select></label>
-        <label style={label}>Activity<select name="type" required defaultValue="application" style={field}><option value="kept">Role kept</option><option value="application">Application sent</option><option value="reply">Reply received</option><option value="interview">Interview held</option><option value="offer">Offer received</option></select></label>
+        <label style={label}>Activity<select name="type" required defaultValue="kept" style={field}><option value="kept">Role pursued</option><option value="reply">Reply received</option><option value="interview">Interview held</option><option value="offer">Offer received</option></select></label>
         <label style={label}>Date<input name="date" type="date" required defaultValue={centralDate()} style={field} /></label>
         <label style={label}>Note (optional)<input name="note" maxLength={1000} style={field} /></label>
         <div><button type="submit" style={button}>Record activity</button></div>

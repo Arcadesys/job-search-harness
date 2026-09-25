@@ -6,5 +6,5 @@ export const metadata: Metadata = {
 };
 
 export default function JobsLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <main>{children}</main>;
+  return children;
 }

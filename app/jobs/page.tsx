@@ -1,118 +1,54 @@
 import { authorizedJobsAccount, requireJobsAccount } from '@/lib/jobs-auth';
 import { listLeads, listSearchQueries, listSearchStatus } from '@/lib/job-discovery';
 import { listResumeTruth } from '@/lib/resume-truth';
+import { centralDate } from '@/lib/jobs-review';
 import { signIn } from '@/auth';
 import Link from 'next/link';
-import TruthEditor from './truth-editor';
-import { addJobLead, editSearchQueries, runJobSearchNow, updateJobLead } from './actions';
+import JobsShell from './jobs-shell';
+import { runJobSearchNow } from './actions';
 import './jobs.css';
 
 export const dynamic = 'force-dynamic';
-
-const pageStyle: React.CSSProperties = { maxWidth: 1120, margin: '0 auto', padding: '2rem clamp(1rem, 4vw, 3rem)', fontSize: '1.125rem', lineHeight: 1.55, color: '#f7f7fb', background: '#10101a', minHeight: '100vh' };
-const panel: React.CSSProperties = { background: '#1c1c2a', border: '2px solid #77778a', borderRadius: 12, padding: '1.25rem', marginBlock: '1.25rem' };
-const field: React.CSSProperties = { display: 'block', width: '100%', minHeight: 54, font: 'inherit', color: '#fff', background: '#10101a', border: '2px solid #aaaabd', borderRadius: 8, padding: '0.6rem 0.75rem', marginBlock: '0.35rem 0.8rem' };
-const button: React.CSSProperties = { minHeight: 56, padding: '0.6rem 1rem', font: 'inherit', fontWeight: 700, color: '#10101a', background: '#fff', border: '3px solid #fff', borderRadius: 8, cursor: 'pointer' };
-const columns: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1rem' };
-const labelStyle: React.CSSProperties = { display: 'block', fontWeight: 700, marginTop: '0.4rem' };
-const dateText = (v: unknown) => v ? new Date(String(v)).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Chicago' }) : 'Not run yet';
+const dateText = (value: unknown) => value ? new Date(String(value)).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Chicago' }) : 'Not run yet';
 
 export default async function JobsPage() {
   const accountId = await authorizedJobsAccount();
   if (!accountId) {
     async function signInWithGithub() { 'use server'; await signIn('github', { redirectTo: '/jobs' }); }
-    return <main className="jobsWorkspace" style={pageStyle}><section style={panel}><h1>Private job workspace</h1><p>Sign in with the GitHub account authorized for this workspace.</p><form action={signInWithGithub}><button style={button} type="submit">Sign in with GitHub</button></form></section></main>;
+    return <main className="jobsWorkspace" style={{ minHeight: '100vh', padding: 'clamp(1rem,6vw,4rem)' }}><section className="jobsPanel" style={{ maxWidth: 650, margin: '0 auto' }}><h1>Private job workspace</h1><p>Sign in with the GitHub account authorized for this workspace.</p><form action={signInWithGithub}><button className="jobsButtonPrimary" type="submit">Sign in with GitHub</button></form></section></main>;
   }
   await requireJobsAccount();
   let reads;
   let storageError = '';
-  try {
-    reads = await Promise.all([listSearchQueries(), listSearchStatus(), listLeads(), listResumeTruth()]);
-  } catch (error) {
-    storageError = error instanceof Error ? error.message : 'Private storage is unavailable.';
-  }
-  const [queries = [], status, leads = [], truth = []] = reads ?? [];
-
-  return <main className="jobsWorkspace" style={pageStyle}>
-    <header style={{ borderBottom: '3px solid #fff', paddingBottom: '1rem' }}>
-      <p style={{ margin: 0, fontWeight: 700, letterSpacing: '0.04em' }}>PRIVATE WORKSPACE · GITHUB ACCOUNT {accountId}</p>
-      <h1 style={{ fontSize: 'clamp(2.25rem, 6vw, 3.5rem)', lineHeight: 1.1, marginBlock: '0.5rem' }}>Job search desk</h1>
-      <p>Search results are leads only. Open the original posting before treating its details as verified.</p>
-      <nav aria-label="Private job workspace"><Link href="/jobs/review">Weekly review →</Link> · <a href="#drafting-handoff">Résumé truths ↓</a> · <a href="#inbox">Lead inbox ↓</a></nav>
-    </header>
-    {storageError ? <section role="status" style={panel}><h2>Private database unavailable</h2><p>{storageError}</p></section> : <>
-      <section aria-labelledby="run-status" style={panel}>
-        <h2 id="run-status">Daily Google Alerts status</h2>
-        <p><strong>This month:</strong> {String(status?.usage?.callsUsed ?? 0)} of {String(status?.usage?.callCap ?? 300)} feed polls used</p>
-        <form action={runJobSearchNow} style={{ marginBlock: '1rem' }}><button type="submit" style={button}>Scan feeds now</button><span style={{ marginInlineStart: '0.75rem' }}>One successful scan per UTC date; a failed scan can be retried.</span></form>
-        <div style={columns}>{(status?.runs ?? []).map((run: any) => <div key={String(run.date)} style={{ border: '1px solid #aaaabd', borderRadius: 8, padding: '0.75rem' }}>
-          <strong>{String(run.date)} · {String(run.status).toUpperCase()}</strong><br />Started {dateText(run.startedAt)}<br />Queries {String(run.queriesAttempted)} · leads {String(run.newLeads)} · calls {String(run.callsUsed)}
-          {run.errorMessage ? <p role="status"><strong>Failure:</strong> {String(run.errorMessage)}</p> : null}
-        </div>)}</div>
-      </section>
-
-      <section aria-labelledby="add-lead" style={panel}>
-        <h2 id="add-lead">Add a lead from a URL</h2>
-        <p>Save a source URL manually. New leads begin as unverified and need an open-link check.</p>
-        <form action={addJobLead} style={columns}>
-          <label style={labelStyle}>Posting URL<input name="url" type="url" required style={field} /></label>
-          <label style={labelStyle}>Role title<input name="title" required maxLength={250} style={field} /></label>
-          <label style={labelStyle}>Organization<input name="organization" maxLength={200} style={field} /></label>
-          <label style={labelStyle}>Location<input name="location" maxLength={160} style={field} /></label>
-          <label style={{ ...labelStyle, gridColumn: '1 / -1' }}>Notes<textarea name="notes" maxLength={4000} rows={3} style={field} /></label>
-          <div><button type="submit" style={button}>Save unverified lead</button></div>
-        </form>
-      </section>
-
-      <section aria-labelledby="queries" style={panel}>
-        <h2 id="queries">Google Alerts feeds</h2>
-        <p>Create six alerts at <a href="https://www.google.com/alerts" target="_blank" rel="noreferrer">Google Alerts ↗</a>, set each delivery to RSS, and paste its feed URL below. The terms here are a reference; changing them here does not edit the matching Google Alert. Feed entries are discovery hints, not verified openings.</p>
-        <form action={editSearchQueries}>
-          <div style={columns}>{queries.map((query: any) => <fieldset key={String(query.id)} style={{ border: '1px solid #aaaabd', borderRadius: 8, padding: '0.75rem' }}>
-            <legend style={{ fontWeight: 700 }}>{String(query.lane)} · {String(query.location)}</legend>
-            <label style={labelStyle}>Alert terms (reference)<textarea name={`query:${query.id}`} required minLength={8} maxLength={500} rows={3} defaultValue={String(query.query)} style={field} /></label>
-            <label style={labelStyle}>Google Alert RSS URL<input name={`feed:${query.id}`} type="url" placeholder="https://www.google.com/alerts/feeds/…" defaultValue={String(query.feedUrl ?? '')} style={field} /></label>
-            <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', minHeight: 48 }}><input name={`enabled:${query.id}`} type="checkbox" defaultChecked={Boolean(query.enabled)} style={{ width: 24, height: 24 }} />Poll this feed daily</label>
-          </fieldset>)}</div>
-          <button type="submit" style={button}>Save Google Alerts feeds</button>
-        </form>
-      </section>
-
-      <section aria-labelledby="inbox" style={panel}>
-        <h2 id="inbox">Lead inbox and application pipeline</h2>
-        {leads.length === 0 ? <p>No leads yet. The daily search run or a manual URL can add the first one.</p> : <div style={{ display: 'grid', gap: '1rem' }}>{leads.map((lead: any) => <article key={String(lead.id)} style={{ ...panel, margin: 0 }}>
-          <h3 style={{ marginTop: 0 }}>{String(lead.title)}</h3>
-          <p><a href={`/jobs/${encodeURIComponent(String(lead.id))}`}>Open private assessment and drafting page →</a></p>
-          <p><strong>{String(lead.organization || 'Organization not listed')}</strong>{lead.location ? ` · ${String(lead.location)}` : ''}</p>
-          <p><strong>Source:</strong> {String(lead.source)} · <strong>Decision:</strong> {String(lead.decision)} · <strong>Posting:</strong> {String(lead.verificationStatus)}</p>
-          <p><strong>Discovered:</strong> {dateText(lead.discoveredAt)} · <strong>Last surfaced or added:</strong> {dateText(lead.lastCheckedAt)}</p>
-          {lead.snippet ? <p>{String(lead.snippet)}</p> : null}
-          <p><a href={String(lead.sourceUrl)} target="_blank" rel="noreferrer" style={{ color: '#fff', textDecoration: 'underline', textUnderlineOffset: 4 }}>Open original posting ↗</a></p>
-          <form action={updateJobLead}>
-            <input type="hidden" name="id" value={String(lead.id)} />
-            <div style={columns}>
-              <label style={labelStyle}>Decision<select name="decision" defaultValue={String(lead.decision)} style={field}><option value="review">Review</option><option value="keep">Keep</option><option value="pass">Pass</option></select></label>
-              <label style={labelStyle}>Posting status<select name="verification" defaultValue={String(lead.verificationStatus)} style={field}><option value="unverified">Unverified</option><option value="verified">Verified by opening link</option><option value="stale">Stale</option><option value="unavailable">Unavailable</option></select></label>
-              <label style={labelStyle}>Application stage<select name="stage" defaultValue={String(lead.applicationStage ?? '')} style={field}><option value="">Not in application pipeline</option><option value="researching">Researching</option><option value="preparing">Preparing</option><option value="applied">Applied</option><option value="interviewing">Interviewing</option><option value="offer">Offer</option><option value="closed">Closed</option></select></label>
-              <label style={labelStyle}>Next action<input name="nextAction" maxLength={500} defaultValue={String(lead.nextAction ?? '')} style={field} /></label>
-              <label style={labelStyle}>Next action date<input name="nextActionDate" type="date" defaultValue={String(lead.nextActionDate ?? '').slice(0, 10)} style={field} /></label>
-              <label style={labelStyle}>Notes<textarea name="notes" rows={2} maxLength={4000} defaultValue={String(lead.notes ?? '')} style={field} /></label>
-            </div>
-            <button type="submit" style={button}>Save lead and pipeline</button>
-          </form>
-        </article>)}</div>}
-      </section>
-
-      <section aria-labelledby="drafting-handoff" style={panel}>
-        <h2 id="drafting-handoff">Drafting handoff</h2>
-        <p>Download kept job leads with reviewed resume claims and their source notes. Unreviewed claims are omitted from the drafting packet.</p>
-        <a href="/api/jobs/drafting-export" download style={{ display: 'inline-block', minHeight: 54, padding: '0.6rem 1rem', border: '3px solid #fff', borderRadius: 8, fontWeight: 700 }}>Download private drafting packet (JSON)</a>
-        <h3>Resume truth review status</h3>
-        <p>{String(truth.filter((claim: any) => claim.reviewStatus === 'reviewed').length)} reviewed · {String(truth.filter((claim: any) => claim.reviewStatus === 'unreviewed').length)} unreviewed · {String(truth.filter((claim: any) => claim.reviewStatus === 'rejected').length)} rejected</p>
-        <p>Claims remain sourced to lib/resume.ts and are not used as public resume edits.</p>
-        <TruthEditor claims={truth} />
-      </section>
-    </>}
-    <p style={{ fontSize: '1rem', borderTop: '1px solid #aaaabd', paddingTop: '1rem' }}>Private job search data stays inside this authenticated workspace. Search snippets do not verify a posting.</p>
-  </main>;
+  try { reads = await Promise.all([listSearchQueries(), listSearchStatus(), listLeads(), listResumeTruth()]); }
+  catch (error) { storageError = error instanceof Error ? error.message : 'Private storage is unavailable.'; }
+  const [queries = [], status, leads = [], truths = []] = reads ?? [];
+  const decisions = leads.filter((lead: any) => lead.decision === 'review').length;
+  const kept = leads.filter((lead: any) => lead.decision === 'keep').length;
+  const today = centralDate();
+  const due = leads.filter((lead: any) => lead.nextActionDate && String(lead.nextActionDate).slice(0, 10) <= today && lead.decision !== 'pass').length;
+  const unreviewed = truths.filter((claim: any) => claim.reviewStatus === 'unreviewed').length;
+  const connected = queries.filter((query: any) => query.enabled && query.feedUrl).length;
+  const lastRun = status?.runs?.[0];
+  return <JobsShell active="today">
+    <header className="jobsPageHeader"><p className="jobsEyebrow">Your workspace</p><h1>Today</h1><p>Review new opportunities and choose your next move.</p></header>
+    {storageError ? <section className="jobsPanel" role="status"><h2>Private database unavailable</h2><p>{storageError}</p></section> : <div className="jobsDashboard">
+      <div className="jobsPrimary">
+        <dl className="jobsStats">
+          <div className="jobsStat"><dt>Leads in inbox</dt><dd>{leads.length}</dd><p>{kept} kept</p></div>
+          <div className="jobsStat"><dt>Need a decision</dt><dd>{decisions}</dd><p>Review or pass</p></div>
+          <div className="jobsStat"><dt>Follow-ups due</dt><dd>{due}</dd><p>Due today or earlier</p></div>
+        </dl>
+        <div className="jobsActions"><Link className="jobsActionLink jobsButtonPrimary" href="/jobs/leads#add-lead">Add a job URL →</Link><form action={runJobSearchNow}><button type="submit" style={{ width: '100%', height: '100%' }}>Scan feeds now →</button></form></div>
+        <section className="jobsPanel" aria-labelledby="inbox-heading"><h2 id="inbox-heading">Lead inbox</h2>
+          {leads.length ? <div className="jobsLeadList">{leads.slice(0, 6).map((lead: any) => <article className="jobsLeadCard" key={String(lead.id)}><h3><Link href={`/jobs/${encodeURIComponent(String(lead.id))}`}>{String(lead.title)}</Link></h3><div className="jobsLeadMeta"><span>{String(lead.organization || 'Organization unknown')}</span><span className="jobsStatus">{String(lead.decision)}</span><span className="jobsStatus">{String(lead.verificationStatus)}</span></div></article>)}</div> : <div className="jobsEmpty"><h3>No leads yet</h3><p>Add a job URL or scan your connected feeds to start collecting opportunities.</p><Link href="/jobs/leads#add-lead">Add a job URL →</Link></div>}
+          {leads.length ? <p><Link href="/jobs/leads">View all leads and pipeline →</Link></p> : null}
+        </section>
+      </div>
+      <aside className="jobsNext" aria-label="Next steps and scan status">
+        <section className="jobsPanel"><h2>Next up</h2><Link className="jobsNextLink" href="/jobs/truths" id="drafting-handoff"><strong>Review résumé truths →</strong><span>{unreviewed} unreviewed · {truths.length - unreviewed} with another status</span></Link><Link className="jobsNextLink" href="/jobs/settings"><strong>Google Alerts →</strong><span>{connected} of {queries.length} feeds connected</span></Link><Link className="jobsNextLink" href="/jobs/review"><strong>Weekly review →</strong><span>Record applications and outcomes</span></Link></section>
+        <section className="jobsPanel" aria-labelledby="scan-heading"><h2 id="scan-heading">Last scan</h2><p><strong>{lastRun ? String(lastRun.status).toUpperCase() : 'Not run yet'}</strong> · {dateText(lastRun?.startedAt)}</p><p>{lastRun ? `${String(lastRun.queriesAttempted)} feeds polled · ${String(lastRun.newLeads)} new leads` : 'Run a scan when your feeds are ready.'}</p>{lastRun?.errorMessage ? <p role="status"><strong>Scan issue:</strong> {String(lastRun.errorMessage)}</p> : null}<p className="jobsMuted">{String(status?.usage?.callsUsed ?? 0)} of {String(status?.usage?.callCap ?? 300)} monthly feed polls used.</p></section>
+      </aside>
+    </div>}
+  </JobsShell>;
 }

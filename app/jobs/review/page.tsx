@@ -1,12 +1,11 @@
 import { requireJobsAccount } from '@/lib/jobs-auth';
 import { centralDate, getReviewWeeks, JOB_REVIEW_TIME_ZONE, listReviewLeads, listWeeklyReview } from '@/lib/jobs-review';
 import { addReviewEvent, completeReviewWeek } from './actions';
-import Link from 'next/link';
+import JobsShell from '../jobs-shell';
 import '../jobs.css';
 
 export const dynamic = 'force-dynamic';
 
-const pageStyle: React.CSSProperties = { maxWidth: 1120, margin: '0 auto', padding: '2rem clamp(1rem, 4vw, 3rem)', fontSize: '1.125rem', lineHeight: 1.55, color: '#f7f7fb', background: '#10101a', minHeight: '100vh' };
 const panel: React.CSSProperties = { background: '#1c1c2a', border: '2px solid #77778a', borderRadius: 12, padding: '1.25rem', marginBlock: '1.25rem' };
 const field: React.CSSProperties = { display: 'block', width: '100%', minHeight: 54, font: 'inherit', color: '#fff', background: '#10101a', border: '2px solid #aaaabd', borderRadius: 8, padding: '0.6rem 0.75rem', marginBlock: '0.35rem 0.8rem' };
 const button: React.CSSProperties = { minHeight: 56, padding: '0.6rem 1rem', font: 'inherit', fontWeight: 700, color: '#10101a', background: '#fff', border: '3px solid #fff', borderRadius: 8, cursor: 'pointer' };
@@ -24,11 +23,10 @@ export default async function WeeklyReviewPage() {
   const [rows, leads] = await Promise.all([listWeeklyReview(weeks), listReviewLeads()]);
   const byWeek = new Map(rows.map((row: any) => [String(row.weekStart).slice(0, 10), row]));
 
-  return <main className="jobsWorkspace" style={pageStyle}>
-    <header style={{ borderBottom: '3px solid #fff', paddingBottom: '1rem' }}>
-      <p style={{ margin: 0, fontWeight: 700 }}>PRIVATE WORKSPACE · WEEKLY REVIEW</p>
-      <h1 style={{ fontSize: 'clamp(2.25rem, 6vw, 3.5rem)', lineHeight: 1.1, marginBlock: '0.5rem' }}>Job search weekly review</h1>
-      <p><Link href="/jobs">← Back to job desk</Link></p>
+  return <JobsShell active="review">
+    <header className="jobsPageHeader">
+      <p className="jobsEyebrow">Activity</p>
+      <h1>Weekly review</h1>
       <p>Weeks run Monday through Sunday in Central Time ({JOB_REVIEW_TIME_ZONE}). Reporting window: {weeks[0]} through {addDays(weeks.at(-1)!, 6)}.</p>
       <p>Leads discovered come from dated lead records. Keeps and outcomes count only dated events you record. An open week shows unrecorded outcomes as unknown; mark it reviewed after recording all known activity to make zero an explicit zero.</p>
     </header>
@@ -62,5 +60,5 @@ export default async function WeeklyReviewPage() {
         </article>;
       })}</div>
     </section>
-  </main>;
+  </JobsShell>;
 }

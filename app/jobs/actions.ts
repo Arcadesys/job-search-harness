@@ -10,6 +10,7 @@ export async function addJobLead(form: FormData) {
   await requireJobsAccount();
   await saveManualLead({ url: value(form, 'url'), title: value(form, 'title'), organization: value(form, 'organization'), location: value(form, 'location'), notes: value(form, 'notes') });
   revalidatePath('/jobs');
+  revalidatePath('/jobs/leads');
 }
 
 export async function updateJobLead(form: FormData) {
@@ -19,6 +20,7 @@ export async function updateJobLead(form: FormData) {
     nextAction: value(form, 'nextAction'), nextActionDate: value(form, 'nextActionDate'), notes: value(form, 'notes'),
   });
   revalidatePath('/jobs');
+  revalidatePath('/jobs/leads');
 }
 
 export async function editSearchQueries(form: FormData) {
@@ -26,10 +28,12 @@ export async function editSearchQueries(form: FormData) {
   const ids = ['ai-chicago', 'ai-remote', 'fde-chicago', 'fde-remote', 'product-chicago', 'product-remote'];
   await saveSearchQueries(ids.map((id) => ({ id, query: value(form, `query:${id}`), feedUrl: value(form, `feed:${id}`), enabled: form.get(`enabled:${id}`) === 'on' })));
   revalidatePath('/jobs');
+  revalidatePath('/jobs/settings');
 }
 
 export async function runJobSearchNow() {
   await requireJobsAccount();
   await runDailySearch();
   revalidatePath('/jobs');
+  revalidatePath('/jobs/settings');
 }

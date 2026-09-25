@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { canAccessJobs, configuredGithubAccountIds, privateJobsPath } from './jobs-access';
@@ -20,6 +21,14 @@ test('private jobs paths include nested pages and APIs', () => {
   assert.equal(privateJobsPath('/api/jobs/resume-truth'), true);
   assert.equal(privateJobsPath('/resume'), false);
   assert.equal(isPrivateAnalyticsPath('/api/jobs/resume-truth'), true);
+});
+
+test('each private workspace view checks the GitHub account before reading records', async () => {
+  const paths = ['leads/page.tsx', 'truths/page.tsx', 'settings/page.tsx', 'review/page.tsx', '[id]/page.tsx'];
+  for (const path of paths) {
+    const source = await readFile(new URL(`../app/jobs/${path}`, import.meta.url), 'utf8');
+    assert.match(source, /await requireJobsAccount\(\)|await authorizedJobsAccount\(\)/, path);
+  }
 });
 
 test('baseline claims retain source notes and start unreviewed', () => {

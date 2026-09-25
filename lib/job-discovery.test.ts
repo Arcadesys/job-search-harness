@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import type { NeonQueryFunction } from '@neondatabase/serverless';
-import { DEFAULT_SEARCHES, ingestSearchResults, leadIdForUrl, normalizeSourceUrl, parseGoogleAlertsFeed, runDailySearch, saveManualLead, saveSearchQueries, updateLead, validateGoogleAlertsFeedUrl } from './job-discovery';
+import { DEFAULT_SEARCHES, ingestLinkedInEmailLeads, ingestSearchResults, leadIdForUrl, normalizeSourceUrl, parseGoogleAlertsFeed, parseLinkedInAlertEmailText, runDailySearch, saveManualLead, saveSearchQueries, updateLead, validateGoogleAlertsFeedUrl } from './job-discovery';
 
 type FakeSql = NeonQueryFunction<false, false>;
 function tagged(fn: (text: string, values: unknown[]) => Promise<unknown[]>): FakeSql {
@@ -15,6 +15,32 @@ test('source URL normalization removes tracking and deduplicates equivalent post
   assert.equal(normalizeSourceUrl(first), normalizeSourceUrl(second));
   assert.equal(leadIdForUrl(first), leadIdForUrl(second));
   assert.throws(() => normalizeSourceUrl('javascript:alert(1)'));
+  assert.equal(normalizeSourceUrl('https://www.linkedin.com/comm/jobs/view/4459916726/?trackingId=secret&trk=email'), 'https://linkedin.com/jobs/view/4459916726');
+  assert.equal(leadIdForUrl('https://www.linkedin.com/comm/jobs/view/4459916726/?trackingId=x'), leadIdForUrl('https://linkedin.com/jobs/view/4459916726'));
+});
+
+test('LinkedIn alert email text yields only job cards and canonical links', () => {
+  const email = `Your job alert for AI jobs in Chicago\nNew jobs match your preferences.\n\nAI Product Engineer\nJerry\nChicago, IL\nTop applicant\nView job: https://www.linkedin.com/comm/jobs/view/4459916726/?trackingId=private\n\n------------------------------\n\nForward Deployed Engineer\nExample Co\nUnited States\nView job: https://www.linkedin.com/jobs/view/4471453089/?trk=email`;
+  assert.deepEqual(parseLinkedInAlertEmailText(email), [
+    { title: 'AI Product Engineer', organization: 'Jerry', location: 'Chicago, IL', url: 'https://linkedin.com/jobs/view/4459916726' },
+    { title: 'Forward Deployed Engineer', organization: 'Example Co', location: 'United States', url: 'https://linkedin.com/jobs/view/4471453089' },
+  ]);
+  assert.deepEqual(parseLinkedInAlertEmailText(`Your job alert for program manager\nA new job matches your preferences.\n\nAI Program Manager\nNorthern Trust\nChicago, IL\nView job: https://www.linkedin.com/comm/jobs/view/4459572103/?trk=email`), [
+    { title: 'AI Program Manager', organization: 'Northern Trust', location: 'Chicago, IL', url: 'https://linkedin.com/jobs/view/4459572103' },
+  ]);
+});
+
+test('LinkedIn email imports deduplicate and preserve saved decisions on repeat', async () => {
+  let statement = '';
+  let payload = '';
+  const fake = tagged(async (text, values) => { statement = text; payload = String(values[0]); return [{ inserted: true }]; });
+  const lead = { title: 'AI Product Engineer', organization: 'Jerry', location: 'Chicago, IL', url: 'https://www.linkedin.com/comm/jobs/view/4459916726/?trackingId=private' };
+  const result = await ingestLinkedInEmailLeads([lead, { ...lead, url: 'https://linkedin.com/jobs/view/4459916726' }, { ...lead, url: 'not-a-url' }], fake);
+  assert.deepEqual(result, { seen: 1, created: 1 });
+  assert.equal(JSON.parse(payload)[0].source_url, 'https://linkedin.com/jobs/view/4459916726');
+  assert.match(statement, /'linkedin-email'/);
+  assert.match(statement, /ON CONFLICT \(source_url\) DO UPDATE SET last_checked_at=now\(\),updated_at=now\(\)/);
+  assert.doesNotMatch(statement, /decision\s*=/);
 });
 
 test('six editable defaults span three target lanes and two locations', () => {

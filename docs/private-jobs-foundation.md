@@ -11,3 +11,7 @@ Apply `db/migrations/0002_job_discovery.sql` to enable the private lead inbox an
 `/api/jobs/drafting-export` creates a private JSON handoff containing kept leads and only reviewed resume claims with source notes. It requires the authorized GitHub session, sends no-store headers, and returns a downloadable attachment. The public resume remains sourced from `lib/resume.ts`.
 
 The public resume remains sourced from `lib/resume.ts`; private review state and edits live only in Postgres. `/jobs` declares `noindex,nofollow`, is excluded from the sitemap, and is disallowed in robots.txt. Analytics initialization, navigation, and click collection skip the `/jobs` route tree.
+
+## LinkedIn email alerts
+
+LinkedIn job alerts delivered to the owner's Gmail account are a separate, on-demand lead source. They are not part of the Google Alerts cron. A connected Gmail reader can extract title, organization, location, and job URL from alert emails, then pass only those fields and the email receipt time as JSON to `node --env-file=.env.local --import tsx scripts/import-linkedin-email-leads.ts`. The importer canonicalizes LinkedIn job IDs, records `linkedin-email` as the source, and preserves existing decisions on repeat imports. It does not store email bodies or mark postings verified. Avoid importing broad recommendations or unrelated LinkedIn mail. No LinkedIn website scraper or Gmail credential is deployed to the site.

@@ -24,6 +24,10 @@ function db(): Sql {
 export function normalizeSourceUrl(input: string): string {
   const url = new URL(input);
   if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Lead URL must use HTTP or HTTPS.');
+  if (['linkedin.com', 'www.linkedin.com'].includes(url.hostname.toLowerCase())) {
+    const job = url.pathname.match(/^\/(?:comm\/)?jobs\/view\/(\d+)\/?$/);
+    if (job) return `https://linkedin.com/jobs/view/${job[1]}`;
+  }
   url.hash = '';
   for (const key of [...url.searchParams.keys()]) if (/^(utm_|fbclid|gclid|ref$)/i.test(key)) url.searchParams.delete(key);
   url.hostname = url.hostname.toLowerCase().replace(/^www\./, '');
@@ -149,6 +153,48 @@ export async function ingestSearchResults(results: SearchResult[], queryId: stri
       RETURNING (xmax = 0) AS inserted`;
   const created = rows.filter((row) => row.inserted === true || row.inserted === 't').length;
   return { seen: leads.length, created };
+}
+
+export type LinkedInEmailLead = { title: string; organization: string; location: string; url: string; receivedAt?: string };
+
+export function parseLinkedInAlertEmailText(text: string): LinkedInEmailLead[] {
+  if (text.length > 150_000) throw new Error('LinkedIn alert email is too large.');
+  const leads: LinkedInEmailLead[] = [];
+  for (const segment of text.split(/-{20,}/)) {
+    const link = segment.match(/View job:\s*(https:\/\/(?:www\.)?linkedin\.com\/(?:comm\/)?jobs\/view\/(\d+)[^\s]*)/i);
+    if (!link) continue;
+    let before = segment.slice(0, link.index);
+    const intro = before.match(/(?:New jobs match|A new job matches) your preferences\./i);
+    if (intro?.index !== undefined) before = before.slice(intro.index + intro[0].length);
+    const lines = before.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (lines.length < 3 || /^Your job alert|^A new job matches/i.test(lines[0])) continue;
+    leads.push({ title: lines[0].slice(0, 250), organization: lines[1].slice(0, 200), location: lines[2].slice(0, 160), url: `https://linkedin.com/jobs/view/${link[2]}` });
+  }
+  return leads;
+}
+
+export async function ingestLinkedInEmailLeads(leads: LinkedInEmailLead[], sql: Sql = db()): Promise<{ seen: number; created: number }> {
+  const unique = new Map<string, LinkedInEmailLead>();
+  for (const item of leads) {
+    if (!item.title.trim() || !item.organization.trim()) continue;
+    let url: string;
+    try { url = normalizeSourceUrl(item.url); } catch { continue; }
+    if (!/^https:\/\/linkedin\.com\/jobs\/view\/\d+$/.test(url)) continue;
+    unique.set(url, { ...item, url });
+  }
+  if (!unique.size) return { seen: 0, created: 0 };
+  const payload = JSON.stringify([...unique.values()].map((item) => ({
+    id: leadIdForUrl(item.url), source_url: item.url, title: item.title.trim().slice(0, 250),
+    organization: item.organization.trim().slice(0, 200), location: item.location.trim().slice(0, 160),
+    received_at: item.receivedAt && !Number.isNaN(Date.parse(item.receivedAt)) ? new Date(item.receivedAt).toISOString() : new Date().toISOString(),
+  })));
+  const rows = await sql`WITH incoming AS (
+      SELECT * FROM jsonb_to_recordset(${payload}::jsonb) AS x(id text,source_url text,title text,organization text,location text,received_at timestamptz)
+    ) INSERT INTO job_leads (id,source_url,title,organization,location,source,discovered_at,notes)
+      SELECT id,source_url,title,organization,location,'linkedin-email',received_at,'From a LinkedIn job alert email. Original posting not yet verified.' FROM incoming
+      ON CONFLICT (source_url) DO UPDATE SET last_checked_at=now(),updated_at=now()
+      RETURNING (xmax = 0) AS inserted`;
+  return { seen: unique.size, created: rows.filter((row) => row.inserted === true || row.inserted === 't').length };
 }
 
 export type ScanDependencies = { sql?: Sql; fetcher?: typeof fetch; now?: Date };

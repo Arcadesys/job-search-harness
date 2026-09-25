@@ -4,6 +4,7 @@ type Sql = NeonQueryFunction<false, false>;
 export const JOB_REVIEW_TIME_ZONE = 'America/Chicago';
 export const REVIEW_EVENT_TYPES = ['kept', 'application', 'reply', 'interview', 'offer'] as const;
 export type ReviewEventType = typeof REVIEW_EVENT_TYPES[number];
+const MANUAL_REVIEW_EVENT_TYPES = ['kept', 'reply', 'interview', 'offer'] as const;
 
 function db(): Sql {
   const url = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -50,22 +51,26 @@ export async function listWeeklyReview(weeks: string[], sql: Sql = db()) {
     ), events AS (
       SELECT date_trunc('week', occurred_on::timestamp)::date AS week_start,
         count(*) FILTER (WHERE event_type='kept')::int AS kept,
-        count(*) FILTER (WHERE event_type='application')::int AS applications,
         count(*) FILTER (WHERE event_type='reply')::int AS replies,
         count(*) FILTER (WHERE event_type='interview')::int AS interviews,
         count(*) FILTER (WHERE event_type='offer')::int AS offers
       FROM job_review_events GROUP BY 1
+    ), applications AS (
+      SELECT date_trunc('week', confirmed_at AT TIME ZONE ${JOB_REVIEW_TIME_ZONE})::date AS week_start,
+        count(*)::int AS applications
+      FROM job_application_receipts GROUP BY 1
     )
     SELECT w.week_start AS "weekStart", coalesce(l.leads,0)::int AS leads,
-      coalesce(e.kept,0)::int AS kept, coalesce(e.applications,0)::int AS applications,
+      coalesce(e.kept,0)::int AS kept, coalesce(a.applications,0)::int AS applications,
       coalesce(e.replies,0)::int AS replies, coalesce(e.interviews,0)::int AS interviews,
       coalesce(e.offers,0)::int AS offers, r.reviewed_at AS "reviewedAt"
     FROM weeks w LEFT JOIN leads l USING (week_start) LEFT JOIN events e USING (week_start)
+      LEFT JOIN applications a USING (week_start)
       LEFT JOIN job_review_weeks r USING (week_start) ORDER BY w.week_start DESC`;
 }
 
 export async function recordReviewEvent(input: { leadId: string; type: string; date: string; note?: string }, sql: Sql = db()): Promise<void> {
-  if (!REVIEW_EVENT_TYPES.includes(input.type as ReviewEventType)) throw new Error('Choose a supported activity type.');
+  if (!MANUAL_REVIEW_EVENT_TYPES.includes(input.type as typeof MANUAL_REVIEW_EVENT_TYPES[number])) throw new Error('Choose a supported activity type.');
   if (!isIsoDate(input.date)) throw new Error('Enter a valid activity date.');
   if (input.date > centralDate()) throw new Error('Record an activity only after its date has happened.');
   if (!input.leadId || input.leadId.length > 160) throw new Error('Choose a lead.');

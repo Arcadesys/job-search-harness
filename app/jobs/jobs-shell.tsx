@@ -8,8 +8,8 @@ const navigation: { id: View; label: string; href: string }[] = [
   { id: 'review', label: 'Weekly review', href: '/jobs/review' },
   { id: 'settings', label: 'Search settings', href: '/jobs/settings' },
 ];
-export default function JobsShell({ active, children }: { active: View; children: React.ReactNode }) {
-  return <div className="jobsWorkspace jobsApp">
+export default function JobsShell({ active, children, truthReview = false }: { active: View; children: React.ReactNode; truthReview?: boolean }) {
+  return <div className={`jobsWorkspace jobsApp${truthReview ? ' jobsTruthApp' : ''}`}>
     <a className="jobsSkip" href="#jobs-content">Skip to content</a>
     <aside className="jobsSidebar" aria-label="Private job workspace navigation">
       <div className="jobsBrand"><span className="jobsBrandMark" aria-hidden="true">◆</span><div><strong>Job Desk</strong><small>Private workspace</small></div></div>

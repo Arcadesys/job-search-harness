@@ -87,3 +87,108 @@
 .jobsTokenList { list-style:none; padding:0; margin:0; display:grid; gap:.5rem; }
 .jobsTokenList li { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; padding:.75rem; border:1px solid var(--jobs-border); border-radius:.5rem; }
 .jobsTokenList button { min-width:7rem; }
+
+/* Grouped résumé review: Concept B. Scoped to this private page. */
+.jobsTruthApp { display:block; font-size:1.25rem; }
+.jobsTruthApp .jobsSidebar { padding:.5rem 2rem; flex-direction:row; align-items:center; flex-wrap:wrap; gap:2rem; border-right:0; border-bottom:1px solid var(--jobs-border); }
+.jobsTruthApp .jobsBrand { padding:0; }
+.jobsTruthApp .jobsBrand strong { font-size:1.75rem; }
+.jobsTruthApp .jobsBrandMark,.jobsTruthApp .jobsBrand small,.jobsTruthApp .jobsSidebarNote,.jobsTruthApp .jobsTopbar { display:none; }
+.jobsTruthApp .jobsSidebar nav ul { display:flex; flex-wrap:wrap; gap:.75rem; }
+.jobsTruthApp .jobsSidebar nav a { border-radius:0; min-height:56px; padding:.65rem .75rem; }
+.jobsTruthApp .jobsSidebar nav a[aria-current="page"] { background:transparent; color:var(--jobs-text); box-shadow:inset 0 -5px var(--jobs-accent); }
+.jobsTruthApp .jobsContent { width:100%; max-width:1680px; margin:0 auto; padding:1.5rem 1rem 2rem; }
+.jobsTruthApp button,.jobsTruthApp input,.jobsTruthApp select,.jobsTruthApp summary { min-height:56px; }
+.jobsTruthApp button:disabled { opacity:.55; cursor:default; }
+.truthHeader { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:0 1rem 1rem; flex-wrap:wrap; }
+.truthHeader h1 { font-size:clamp(2rem,4vw,3.25rem); line-height:1.15; margin:0 0 .5rem; }
+.truthHeader p { margin:0; color:var(--jobs-muted); }
+.truthHeader .truthProgress { padding-top:1rem; color:var(--jobs-text); }
+.truthFeedback:has(p:empty):not(:has(button)) { display:none; }
+.truthFeedback { padding:0 1rem 1rem; }
+.truthFeedback p { margin:.5rem 0; }
+.truthFeedback [role="alert"] { border:2px solid var(--jobs-accent); padding:1rem; }
+.truthLayout { display:grid; grid-template-columns: minmax(220px,20%) minmax(0,1fr); gap:1rem; }
+.truthSections { border:1px solid var(--jobs-border); border-radius:.5rem; padding:1rem 0; align-self:start; }
+.jobsWorkspace .truthSections button { display:block; width:100%; border:0; border-left:6px solid transparent; border-radius:0; background:transparent; padding:1.2rem 1rem; font-size:1.5rem; font-weight:500; color:var(--jobs-muted); }
+.jobsWorkspace .truthSections button[aria-current="true"] { border-left-color:var(--jobs-accent); background:var(--jobs-surface); font-weight:750; color:var(--jobs-text); }
+.truthGroup { border:1px solid var(--jobs-border); border-radius:.5rem; background:var(--jobs-surface); }
+.truthGroupHeader { padding:1rem 1.25rem .5rem; }
+.truthGroupHeader h2 { font-size:2rem; line-height:1.2; margin:0 0 .25rem; }
+.truthGroupHeader p { margin:.35rem 0; color:var(--jobs-muted); }
+.truthRolePicker { display:flex!important; align-items:center; gap:1rem; margin:.75rem 0; }
+.truthRolePicker select { max-width:36rem; margin:0!important; }
+.truthFilters > div { display:grid; grid-template-columns:2fr 1fr; gap:1rem; padding:.5rem 0 1rem; }
+.truthRows { list-style:none; padding:0; margin:0; }
+.truthRow { border-top:1px solid var(--jobs-border); padding:.6rem 1.25rem; }
+.truthRowMain { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:1rem; align-items:center; }
+.truthRowMain button { min-width:6rem; text-align:center; }
+.truthChoice,.truthSelectAll { display:flex!important; align-items:center; gap:1.25rem; cursor:pointer; min-height:56px; margin:0!important; font-weight:500!important; }
+.truthChoice { font-size:1.5rem; line-height:1.45; }
+.truthChoice input,.truthSelectAll input { flex:0 0 36px; width:36px!important; height:36px!important; min-height:36px!important; margin:0!important; accent-color:var(--jobs-accent); cursor:pointer; }
+.truthSelectAll { font-size:1.35rem; font-weight:750!important; padding:.5rem 0; }
+.truthSavedClaim { font-size:1.5rem; margin:0; }
+.truthSavedStatus { border:1px solid #8e9bb2; border-radius:.35rem; padding:.15rem .4rem; font-size:1.125rem; }
+.jobsWorkspace summary { display:flex; align-items:center; cursor:pointer; text-decoration:underline; text-underline-offset:.2em; font-weight:600; }
+.jobsWorkspace summary::before { content:'＋'; text-decoration:none; margin-right:.5rem; }
+.jobsWorkspace details[open] > summary::before { content:'−'; }
+.truthSource { margin-left:3.5rem; font-size:1.125rem; color:var(--jobs-muted); }
+.truthSource p { margin:.5rem 0; }
+.truthComparison { margin:.25rem 0 .25rem 3.5rem; }
+.jobsWorkspace .truthComparison > button { background:transparent; font-size:1.125rem; padding:.35rem .65rem; }
+.truthCompareBody { border-left:4px solid var(--jobs-accent); padding:1rem; margin-top:.5rem; }
+.truthCompareBody h3 { margin:0; }
+.truthCompareBody .truthRow { padding:.75rem 0; }
+.truthEdit { padding:1rem; margin:.75rem 0; border:2px solid var(--jobs-accent); border-radius:.5rem; }
+.truthEdit h3 { margin:0; }
+.truthEditActions { display:flex; flex-wrap:wrap; gap:.75rem; }
+.truthActions { border-top:1px solid var(--jobs-border); padding:1.25rem; display:flex; align-items:center; flex-wrap:wrap; gap:.75rem; }
+.truthActions p { flex:1 1 15rem; margin:0; font-weight:700; }
+.truthActions a { display:inline-flex; align-items:center; min-height:56px; padding:.5rem; }
+.truthActions a[aria-disabled] { opacity:.55; }
+.truthEmpty { padding:1rem 1.25rem; }
+@media(max-width:1100px) {
+  .truthLayout { grid-template-columns: minmax(185px,22%) minmax(0,1fr); }
+  .truthRowMain { grid-template-columns:minmax(0,1fr) auto; }
+  .truthChoice,.truthSavedClaim { grid-column:1 / -1; }
+  .truthSavedStatus { justify-self:start; }
+  .truthRolePicker { display:block!important; }
+}
+@media(max-width:760px) {
+  .jobsTruthApp .jobsSidebar { padding:.75rem 1rem; gap:.5rem; }
+  .jobsTruthApp .jobsSidebar nav ul { gap:0; }
+  .jobsTruthApp .jobsContent { padding:1rem .75rem; }
+  .truthHeader { padding:0 0 1rem; }
+  .truthLayout { display:block; }
+  .truthSections { display:flex; flex-wrap:wrap; margin-bottom:1rem; padding:.5rem; }
+  .jobsWorkspace .truthSections button { width:auto; flex:1 1 12rem; font-size:1.25rem; padding:.75rem; }
+  .truthGroupHeader,.truthRow,.truthActions { padding:.75rem; }
+  .truthGroupHeader h2 { font-size:1.65rem; }
+  .truthChoice,.truthSavedClaim { font-size:1.25rem; }
+  .truthChoice,.truthSelectAll { gap:.75rem; }
+  .truthSource,.truthComparison { margin-left:0; }
+  .truthCompareBody { padding:.5rem; }
+  .truthFilters > div { grid-template-columns:1fr; }
+  .truthActions,.truthEditActions { align-items:stretch; flex-direction:column; }
+  .truthActions p { flex:auto; }
+  .truthActions button,.truthEditActions button { width:100%; }
+}
+.truthSourceControl { display:flex; align-items:center; flex-wrap:wrap; gap:.75rem; color:var(--jobs-muted); }
+.jobsWorkspace .truthSourceControl button { border:0; background:transparent; color:var(--jobs-text); text-decoration:underline; font-size:1.125rem; padding:.4rem; }
+.truthSource[hidden] { display:none; }
+.truthChoice input,.truthSelectAll input { appearance:none; border:2px solid var(--jobs-muted); border-radius:.25rem; background:var(--jobs-bg); display:grid; place-content:center; }
+.truthChoice input:checked,.truthSelectAll input:checked,.truthSelectAll input:indeterminate { background:var(--jobs-accent); border-color:var(--jobs-accent); }
+.truthChoice input:checked::after,.truthSelectAll input:checked::after { content:'✓'; color:#10131d; font-size:1.8rem; font-weight:800; line-height:1; }
+.truthSelectAll input:indeterminate::after { content:'−'; color:#10131d; font-size:1.8rem; font-weight:800; line-height:1; }
+@media(forced-colors:active) { .truthChoice input,.truthSelectAll input { appearance:auto; } .truthChoice input::after,.truthSelectAll input::after { content:none!important; } }
+@media(max-width:550px) {
+  .truthRowMain { grid-template-columns:minmax(0,1fr); gap:.75rem; }
+  .truthRowMain button { min-width:0; width:100%; }
+  .truthSavedStatus { max-width:100%; }
+}
+.jobsTruthApp .jobsSidebar nav { max-width:100%; }
+.jobsTruthApp .jobsSidebar nav li { flex:0 1 auto; max-width:100%; }
+.jobsTruthApp .jobsSidebar nav a[aria-current="page"] { border-left:0; }
+.truthGroupTools { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:.5rem 1rem; }
+.truthGroupTools .truthFilters[open] { flex-basis:100%; }
+.truthActions .jobsButtonPrimary { min-height:64px; font-size:1.35rem; }

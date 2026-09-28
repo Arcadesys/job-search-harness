@@ -1,3 +1,4 @@
+import { reviewedTruthsForDraft } from '@/lib/resume-truth-review';
 import { requireJobsAccount } from '@/lib/jobs-auth';
 import { listLeads } from '@/lib/job-discovery';
 import { listResumeTruth } from '@/lib/resume-truth';
@@ -15,7 +16,7 @@ export async function GET() {
       verificationStatus: lead.verificationStatus, applicationStage: lead.applicationStage,
       nextAction: lead.nextAction, nextActionDate: lead.nextActionDate, notes: lead.notes,
     })),
-    reviewedResumeClaims: claims.filter((claim) => claim.reviewStatus === 'reviewed').map((claim) => ({ id: claim.id, claim: claim.claim, sourceNote: claim.sourceNote })),
+    reviewedResumeClaims: reviewedTruthsForDraft(claims),
   };
   return Response.json(payload, {
     headers: {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { reviewedTruthsForDraft } from './resume-truth-review';
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { DEFAULT_SEARCHES, ingestLinkedInEmailLeads, ingestSearchResults, leadIdForUrl, normalizeSourceUrl, parseGoogleAlertsFeed, parseLinkedInAlertEmailText, runDailySearch, saveManualLead, saveSearchQueries, updateLead, validateGoogleAlertsFeedUrl } from './job-discovery';
 
@@ -165,6 +166,8 @@ test('private page actions authorize reads and writes and cron endpoint validate
   assert.match(route, /CRON_SECRET/);
   assert.match(route, /timingSafeEqual/);
   assert.match(exportRoute, /await requireJobsAccount\(\)/);
-  assert.match(exportRoute, /reviewStatus === 'reviewed'/);
+  assert.match(exportRoute, /reviewedResumeClaims: reviewedTruthsForDraft\(claims\)/);
+  const claims = (['unreviewed', 'reviewed', 'rejected'] as const).map((reviewStatus) => ({ id: reviewStatus, claim: 'Fact', sourceNote: 'Evidence', reviewStatus }));
+  assert.deepEqual(reviewedTruthsForDraft(claims), [{ id: 'reviewed', claim: 'Fact', sourceNote: 'Evidence' }]);
   assert.match(exportRoute, /decision === 'keep'/);
 });

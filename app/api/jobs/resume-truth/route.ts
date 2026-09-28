@@ -1,5 +1,6 @@
+import { handleTruthReview } from '@/lib/resume-truth-http';
 import { authorizedJobsAccount } from '@/lib/jobs-auth';
-import { listResumeTruth, listResumeTruthVersions, saveResumeTruth } from '@/lib/resume-truth';
+import { listResumeTruth, listResumeTruthVersions, saveResumeTruth, reviewResumeTruth } from '@/lib/resume-truth';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,4 +27,9 @@ export async function PATCH(request: Request) {
     await saveResumeTruth(claim as Parameters<typeof saveResumeTruth>[0]);
     return Response.json({ ok: true }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch { return Response.json({ error: 'Unable to save private resume truth.' }, { status: 503, headers: { 'Cache-Control': 'private, no-store' } }); }
+}
+
+
+export async function POST(request: Request) {
+  return handleTruthReview(request, { authorize: authorizedJobsAccount, save: reviewResumeTruth, list: listResumeTruth });
 }

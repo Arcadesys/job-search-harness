@@ -1,6 +1,6 @@
 import { requireJobsAccount } from '@/lib/jobs-auth';
-import { centralDate, getReviewWeeks, JOB_REVIEW_TIME_ZONE, listReviewLeads, listWeeklyReview } from '@/lib/jobs-review';
-import { addReviewEvent, completeReviewWeek } from './actions';
+import { centralDate, getReviewWeeks, JOB_REVIEW_TIME_ZONE, listReviewLeads, listSiteOutcomes, listWeeklyReview } from '@/lib/jobs-review';
+import { addReviewEvent, addSiteOutcome, completeReviewWeek, deleteSiteOutcome } from './actions';
 import JobsShell from '../jobs-shell';
 import '../jobs.css';
 
@@ -14,13 +14,14 @@ const label: React.CSSProperties = { display: 'block', fontWeight: 700, marginTo
 const metrics = [
   ['leads', 'Leads discovered'], ['kept', 'Roles pursued'], ['applications', 'Applications'],
   ['replies', 'Replies'], ['interviews', 'Interviews'], ['offers', 'Offers'],
+  ['hiringInquiries', 'Hiring inquiries received'], ['conversationsBooked', 'Conversations booked'],
 ] as const;
 const addDays = (date: string, days: number) => { const d = new Date(`${date}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
 
 export default async function WeeklyReviewPage() {
   await requireJobsAccount();
   const weeks = getReviewWeeks(centralDate(), 8);
-  const [rows, leads] = await Promise.all([listWeeklyReview(weeks), listReviewLeads()]);
+  const [rows, leads, siteOutcomes] = await Promise.all([listWeeklyReview(weeks), listReviewLeads(), listSiteOutcomes()]);
   const byWeek = new Map(rows.map((row: any) => [String(row.weekStart).slice(0, 10), row]));
 
   return <JobsShell active="review">
@@ -28,7 +29,7 @@ export default async function WeeklyReviewPage() {
       <p className="jobsEyebrow">Activity</p>
       <h1>Weekly review</h1>
       <p>Weeks run Monday through Sunday in Central Time ({JOB_REVIEW_TIME_ZONE}). Reporting window: {weeks[0]} through {addDays(weeks.at(-1)!, 6)}.</p>
-      <p>Leads discovered come from dated lead records. Applications count only employer confirmation receipts recorded by the job-hunt workflow; pursued roles and other outcomes count from dated activity. An open week shows unrecorded outcomes as unknown; mark it reviewed after recording all known activity to make zero an explicit zero.</p>
+      <p>Leads discovered come from dated lead records. Applications count only employer confirmation receipts recorded by the job-hunt workflow; pursued roles and other outcomes count from dated activity. Hiring inquiries and booked conversations are entered here only after you confirm them. They are separate from site clicks. An open week shows unrecorded outcomes as unknown; mark it reviewed after recording all known activity to make zero an explicit zero.</p>
     </header>
 
     <section aria-labelledby="record-activity" style={panel}>
@@ -43,10 +44,26 @@ export default async function WeeklyReviewPage() {
       </form>
     </section>
 
+    <section aria-labelledby="site-outcomes" style={panel}>
+      <h2 id="site-outcomes">Confirmed inquiries and conversations</h2>
+      <p>Record an actual inbound hiring inquiry or a confirmed calendar booking. A contact or booking click alone does not count. Use a short private reference specific to each event so you can check the source later; no name or email address is required. These records stay in the private jobs workspace and are not sent to PostHog.</p>
+      <form action={addSiteOutcome} style={stats}>
+        <label style={label}>Confirmed outcome<select name="type" required defaultValue="" style={field}><option value="" disabled>Choose an outcome</option><option value="hiring_inquiry">Hiring inquiry received</option><option value="conversation_booked">Conversation booked</option></select></label>
+        <label style={label}>Date confirmed<input name="date" type="date" required defaultValue={centralDate()} style={field} /></label>
+        <label style={label}>Private evidence reference<input name="evidenceRef" required maxLength={160} placeholder="For example, calendar entry on Sep 27" style={field} /></label>
+        <div><button type="submit" style={button}>Record confirmed outcome</button></div>
+      </form>
+      <h3>Recent confirmed outcomes</h3>
+      {siteOutcomes.length ? <ul>{siteOutcomes.map((item: any) => <li key={String(item.id)} style={{ marginBlock: '0.75rem' }}>
+        {String(item.date).slice(0, 10)} — {item.type === 'hiring_inquiry' ? 'Hiring inquiry received' : 'Conversation booked'} — {String(item.evidenceRef)}{' '}
+        <form action={deleteSiteOutcome} style={{ display: 'inline' }}><input type="hidden" name="id" value={String(item.id)} /><button type="submit" style={button} aria-label={`Remove ${item.type === 'hiring_inquiry' ? 'hiring inquiry' : 'booked conversation'}: ${String(item.evidenceRef)}`}>Remove</button></form>
+      </li>)}</ul> : <p>No confirmed outcomes recorded yet.</p>}
+    </section>
+
     <section aria-labelledby="weekly-counts">
       <h2 id="weekly-counts">Weekly counts</h2>
       <div style={{ display: 'grid', gap: '1rem' }}>{weeks.slice().reverse().map((week) => {
-        const row = byWeek.get(week) ?? { leads: 0, kept: 0, applications: 0, replies: 0, interviews: 0, offers: 0, reviewedAt: null };
+        const row = byWeek.get(week) ?? { leads: 0, kept: 0, applications: 0, replies: 0, interviews: 0, offers: 0, hiringInquiries: 0, conversationsBooked: 0, reviewedAt: null };
         const complete = Boolean(row.reviewedAt);
         return <article key={week} style={panel}>
           <h3 style={{ marginTop: 0 }}>Week of {week} <span style={{ fontSize: '1rem', fontWeight: 400 }}>through {addDays(week, 6)}</span></h3>

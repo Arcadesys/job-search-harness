@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import type { NeonQueryFunction } from '@neondatabase/serverless';
-import { centralDate, getReviewWeeks, JOB_REVIEW_TIME_ZONE, listWeeklyReview, markReviewWeekComplete, recordReviewEvent } from './jobs-review';
+import { centralDate, getReviewWeeks, JOB_REVIEW_TIME_ZONE, listWeeklyReview, markReviewWeekComplete, recordReviewEvent, recordSiteOutcome, removeSiteOutcome } from './jobs-review';
 
 type FakeSql = NeonQueryFunction<false, false>;
 function tagged(fn: (text: string, values: unknown[]) => Promise<unknown[]>): FakeSql {
@@ -29,7 +29,26 @@ test('weekly counts use dated lead records and explicit outcome events with revi
   assert.match(statement, /coalesce\(a\.applications,0\)::int AS applications/);
   assert.doesNotMatch(statement, /FILTER \(WHERE event_type='application'\)/);
   assert.match(statement, /LEFT JOIN job_review_weeks/);
+  assert.match(statement, /FROM work_site_outcomes GROUP BY 1/);
+  assert.match(statement, /coalesce\(s\.hiring_inquiries,0\)::int AS "hiringInquiries"/);
+  assert.match(statement, /coalesce\(s\.conversations_booked,0\)::int AS "conversationsBooked"/);
   assert.match(statement, /reviewed_at AS "reviewedAt"/);
+});
+
+test('confirmed site outcomes are private, dated, evidence-linked, and de-duplicated', async () => {
+  let statement = '';
+  let values: unknown[] = [];
+  const fake = tagged(async (text, args) => { statement = text; values = args; return []; });
+  await recordSiteOutcome({ type: 'hiring_inquiry', date: '2026-09-24', evidenceRef: ' LinkedIn message Sep 24 ' }, fake);
+  assert.match(statement, /INSERT INTO work_site_outcomes/);
+  assert.match(statement, /ON CONFLICT \(outcome_type, evidence_ref\) DO UPDATE/);
+  assert.ok(values.includes('LinkedIn message Sep 24'));
+  await assert.rejects(() => recordSiteOutcome({ type: 'contact_click', date: '2026-09-24', evidenceRef: 'click' }, fake), /supported outcome/);
+  await assert.rejects(() => recordSiteOutcome({ type: 'conversation_booked', date: '2999-01-01', evidenceRef: 'calendar' }, fake), /valid date/);
+  await assert.rejects(() => recordSiteOutcome({ type: 'conversation_booked', date: '2026-09-24', evidenceRef: ' ' }, fake), /evidence reference/);
+  await removeSiteOutcome('12', fake);
+  assert.match(statement, /DELETE FROM work_site_outcomes WHERE id=/);
+  await assert.rejects(() => removeSiteOutcome('12 OR 1=1', fake), /Invalid outcome/);
 });
 
 test('dated activity records are explicit, constrained, tied to a lead, and idempotent for same-day double submits', async () => {
@@ -62,9 +81,11 @@ test('review route and both mutations require the authorized jobs account', asyn
     readFile(new URL('../app/jobs/review/actions.ts', import.meta.url), 'utf8'),
   ]);
   assert.match(page, /await requireJobsAccount\(\)/);
-  assert.equal((actions.match(/await requireJobsAccount\(\)/g) ?? []).length, 2);
+  assert.equal((actions.match(/await requireJobsAccount\(\)/g) ?? []).length, 4);
   assert.match(page, /JOB_REVIEW_TIME_ZONE/);
   assert.match(page, /Not recorded/);
   assert.match(page, /Applications are counted from confirmed submission receipts/);
   assert.doesNotMatch(page, /option value="application"/);
+  assert.match(page, /Confirmed inquiries and conversations/);
+  assert.match(page, /not sent to PostHog/);
 });

@@ -5,6 +5,7 @@ export const JOB_REVIEW_TIME_ZONE = 'America/Chicago';
 export const REVIEW_EVENT_TYPES = ['kept', 'application', 'reply', 'interview', 'offer'] as const;
 export type ReviewEventType = typeof REVIEW_EVENT_TYPES[number];
 const MANUAL_REVIEW_EVENT_TYPES = ['kept', 'reply', 'interview', 'offer'] as const;
+const SITE_OUTCOME_TYPES = ['hiring_inquiry', 'conversation_booked'] as const;
 
 function db(): Sql {
   const url = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -59,14 +60,43 @@ export async function listWeeklyReview(weeks: string[], sql: Sql = db()) {
       SELECT date_trunc('week', confirmed_at AT TIME ZONE ${JOB_REVIEW_TIME_ZONE})::date AS week_start,
         count(*)::int AS applications
       FROM job_application_receipts GROUP BY 1
+    ), site_outcomes AS (
+      SELECT date_trunc('week', occurred_on::timestamp)::date AS week_start,
+        count(*) FILTER (WHERE outcome_type='hiring_inquiry')::int AS hiring_inquiries,
+        count(*) FILTER (WHERE outcome_type='conversation_booked')::int AS conversations_booked
+      FROM work_site_outcomes GROUP BY 1
     )
     SELECT w.week_start AS "weekStart", coalesce(l.leads,0)::int AS leads,
       coalesce(e.kept,0)::int AS kept, coalesce(a.applications,0)::int AS applications,
       coalesce(e.replies,0)::int AS replies, coalesce(e.interviews,0)::int AS interviews,
-      coalesce(e.offers,0)::int AS offers, r.reviewed_at AS "reviewedAt"
+      coalesce(e.offers,0)::int AS offers,
+      coalesce(s.hiring_inquiries,0)::int AS "hiringInquiries",
+      coalesce(s.conversations_booked,0)::int AS "conversationsBooked",
+      r.reviewed_at AS "reviewedAt"
     FROM weeks w LEFT JOIN leads l USING (week_start) LEFT JOIN events e USING (week_start)
       LEFT JOIN applications a USING (week_start)
+      LEFT JOIN site_outcomes s USING (week_start)
       LEFT JOIN job_review_weeks r USING (week_start) ORDER BY w.week_start DESC`;
+}
+
+export async function listSiteOutcomes(sql: Sql = db()) {
+  return await sql`SELECT id, outcome_type AS type, occurred_on AS date, evidence_ref AS "evidenceRef"
+    FROM work_site_outcomes ORDER BY occurred_on DESC, id DESC LIMIT 30`;
+}
+
+export async function recordSiteOutcome(input: { type: string; date: string; evidenceRef: string }, sql: Sql = db()): Promise<void> {
+  if (!SITE_OUTCOME_TYPES.includes(input.type as typeof SITE_OUTCOME_TYPES[number])) throw new Error('Choose a supported outcome.');
+  if (!isIsoDate(input.date) || input.date > centralDate()) throw new Error('Enter a valid date that has happened.');
+  const evidenceRef = input.evidenceRef.trim();
+  if (!evidenceRef || evidenceRef.length > 160) throw new Error('Enter a short private evidence reference.');
+  await sql`INSERT INTO work_site_outcomes (outcome_type, occurred_on, evidence_ref)
+    VALUES (${input.type}, ${input.date}, ${evidenceRef})
+    ON CONFLICT (outcome_type, evidence_ref) DO UPDATE SET occurred_on=EXCLUDED.occurred_on`;
+}
+
+export async function removeSiteOutcome(id: string, sql: Sql = db()): Promise<void> {
+  if (!/^\d{1,18}$/.test(id)) throw new Error('Invalid outcome.');
+  await sql`DELETE FROM work_site_outcomes WHERE id=${id}::bigint`;
 }
 
 export async function recordReviewEvent(input: { leadId: string; type: string; date: string; note?: string }, sql: Sql = db()): Promise<void> {

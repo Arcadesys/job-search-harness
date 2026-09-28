@@ -29,7 +29,7 @@ export function renderTruthGroundedDraft(claims: TruthClaim[], title: string, or
 }
 
 export async function getDraftingLead(id: string, sql: Sql = db()) {
-  const rows = await sql`SELECT id,source_url AS "sourceUrl",title,organization,location,verification_status AS "verificationStatus",posting_text AS "postingText",posting_source_note AS "postingSourceNote" FROM job_leads WHERE id=${id}`;
+  const rows = await sql`SELECT id,source_url AS "sourceUrl",title,organization,location,source,verification_status AS "verificationStatus",posting_text AS "postingText",posting_source_note AS "postingSourceNote" FROM job_leads WHERE id=${id}`;
   return rows[0] ?? null;
 }
 

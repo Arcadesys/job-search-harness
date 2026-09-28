@@ -5,6 +5,7 @@ import { getDraftingLead, currentAiUsage, listDraftingHistory } from '@/lib/job-
 import { listResumeTruth } from '@/lib/resume-truth';
 import DraftingPanel from './panel';
 import JobsShell from '../jobs-shell';
+import LeadSourceFit from '../lead-source-fit';
 import '../jobs.css';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,7 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
   return <JobsShell active="leads">
     <header className="jobsPageHeader"><p className="jobsEyebrow">Lead detail</p><h1>{String(lead.title)}</h1><p><strong>{String(lead.organization || 'Organization not listed')}</strong> · {String(lead.location || 'Location not listed')}</p></header>
     <p>Posting status: <strong>{String(lead.verificationStatus)}</strong></p>
-    <p><a href={String(lead.sourceUrl)} target="_blank" rel="noreferrer">Open original posting ↗</a></p>
+    <LeadSourceFit lead={lead as any} claims={claims} detail />
     <DraftingPanel lead={lead as any} history={history as any} usage={usage} claims={claims} />
   </JobsShell>;
 }

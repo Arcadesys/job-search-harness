@@ -5,6 +5,7 @@ import { centralDate } from '@/lib/jobs-review';
 import { signIn } from '@/auth';
 import Link from 'next/link';
 import JobsShell from './jobs-shell';
+import LeadSourceFit from './lead-source-fit';
 import { runJobSearchNow } from './actions';
 import './jobs.css';
 
@@ -41,7 +42,7 @@ export default async function JobsPage() {
         </dl>
         <div className="jobsActions"><Link className="jobsActionLink jobsButtonPrimary" href="/jobs/leads#add-lead">Add a job URL →</Link><form action={runJobSearchNow}><button type="submit" style={{ width: '100%', height: '100%' }}>Scan feeds now →</button></form></div>
         <section className="jobsPanel" aria-labelledby="inbox-heading"><h2 id="inbox-heading">Lead inbox</h2>
-          {leads.length ? <div className="jobsLeadList">{leads.slice(0, 6).map((lead: any) => <article className="jobsLeadCard" key={String(lead.id)}><h3><Link href={`/jobs/${encodeURIComponent(String(lead.id))}`}>{String(lead.title)}</Link></h3><div className="jobsLeadMeta"><span>{String(lead.organization || 'Organization unknown')}</span><span className="jobsStatus">{lead.decision === 'keep' ? 'Pursue' : String(lead.decision)}</span><span className="jobsStatus">{String(lead.verificationStatus)}</span><span>{String(lead.source).startsWith('linkedin-email') ? 'LinkedIn email alert' : String(lead.source).startsWith('google-alerts') ? 'Google Alert' : 'Added manually'}</span></div></article>)}</div> : <div className="jobsEmpty"><h3>No leads yet</h3><p>Add a job URL or scan your connected feeds to start collecting opportunities.</p><Link href="/jobs/leads#add-lead">Add a job URL →</Link></div>}
+          {leads.length ? <div className="jobsLeadList">{leads.slice(0, 6).map((lead: any) => <article className="jobsLeadCard" key={String(lead.id)}><h3><Link href={`/jobs/${encodeURIComponent(String(lead.id))}`}>{String(lead.title)}</Link></h3><div className="jobsLeadMeta"><span>{String(lead.organization || 'Organization unknown')}</span><span className="jobsStatus">{lead.decision === 'keep' ? 'Pursue' : String(lead.decision)}</span><span className="jobsStatus">{String(lead.verificationStatus)}</span><span>{String(lead.source).startsWith('linkedin-email') ? 'LinkedIn email alert' : String(lead.source).startsWith('google-alerts') ? 'Google Alert' : 'Added manually'}</span></div><LeadSourceFit lead={lead} claims={truths} /></article>)}</div> : <div className="jobsEmpty"><h3>No leads yet</h3><p>Add a job URL or scan your connected feeds to start collecting opportunities.</p><Link href="/jobs/leads#add-lead">Add a job URL →</Link></div>}
           {leads.length ? <p><Link href="/jobs/leads">View all leads and pipeline →</Link></p> : null}
         </section>
       </div>

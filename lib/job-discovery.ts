@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
+import { hostedJobSql, type Sql } from './job-storage';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 export const SEARCH_CAP = 300;
@@ -13,13 +13,8 @@ export const DEFAULT_SEARCHES = [
 ] as const;
 
 export type SearchResult = { title: string; url: string; description?: string; age?: string; profile?: { long_name?: string; name?: string } };
-type Sql = NeonQueryFunction<false, false>;
 
-function db(): Sql {
-  const url = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!url) throw new Error('Private job database is not configured.');
-  return neon(url);
-}
+const db = hostedJobSql;
 
 export function normalizeSourceUrl(input: string): string {
   const url = new URL(input);

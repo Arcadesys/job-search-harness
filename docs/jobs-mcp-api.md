@@ -1,5 +1,10 @@
 # Local job-hunt MCP API
 
+The hosted contract below remains available for rollback. The reviewed local
+replacement and foreground setup are described in [local-jobdesk.md](local-jobdesk.md).
+The local adapter preserves these five operations through a private Unix broker;
+it does not import hosted bearer tokens or bypass the web application's OAuth.
+
 This private API is the narrow data interface for the local stdio MCP client. It never submits an application to an employer. Every route requires `Authorization: Bearer <token>`, rechecks the token expiry and revocation state, verifies that its owner is still in `JOBS_GITHUB_ACCOUNT_IDS`, enforces owner-scoped batch membership, and returns `Cache-Control: private, no-store`.
 
 Tokens are created and revoked in the GitHub-allowlisted `/jobs/settings` page. A new token expires after 90 days, is stored only as a SHA-256 hash, and is returned to the browser once. Copy it to the local Mac Keychain flow; never put it in project files or logs.

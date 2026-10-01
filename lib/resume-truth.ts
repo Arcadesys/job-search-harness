@@ -1,4 +1,4 @@
-import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
+import { hostedJobSql, type Sql } from './job-storage';
 import { reviewBatchSchema, type TruthChange, type ReviewClaim } from './resume-truth-review';
 import {
   RESUME_ACCOMPLISHMENTS, RESUME_COMMUNITY, RESUME_EARLIER, RESUME_EDUCATION,
@@ -15,13 +15,8 @@ export type TruthClaim = {
 };
 
 export type TruthVersion = TruthClaim & { createdAt: string };
-type Sql = NeonQueryFunction<false, false>;
 
-function getSql(): Sql {
-  const url = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!url) throw new Error('NEON_DATABASE_URL or DATABASE_URL is required for private resume storage.');
-  return neon(url);
-}
+const getSql = hostedJobSql;
 
 /** Every seed starts as unreviewed, with a file and export/property source note. */
 export function baselineResumeClaims(): TruthClaim[] {

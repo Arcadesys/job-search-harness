@@ -6,11 +6,11 @@ import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 type PdfLead = { title: string; organization: string; location: string; sourceUrl: string; postingSourceNote: string };
 type PdfDraft = { resumeVariant: string; outreach: string; truthSnapshot: Array<{ id: string; claim: string; sourceNote: string }> };
 
-export async function renderApplicationPdf(lead: PdfLead, draft: PdfDraft): Promise<Uint8Array> {
+export async function renderApplicationPdf(lead: PdfLead, draft: PdfDraft, fontDirectory = path.join(process.cwd(), 'assets/fonts')): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
-  const regular = await doc.embedFont(await readFile(path.join(process.cwd(), 'assets/fonts/AtkinsonHyperlegible-Regular.ttf')));
-  const bold = await doc.embedFont(await readFile(path.join(process.cwd(), 'assets/fonts/AtkinsonHyperlegible-Bold.ttf')));
+  const regular = await doc.embedFont(await readFile(path.join(fontDirectory, 'AtkinsonHyperlegible-Regular.ttf')));
+  const bold = await doc.embedFont(await readFile(path.join(fontDirectory, 'AtkinsonHyperlegible-Bold.ttf')));
   const supported = [new Set(regular.getCharacterSet()), new Set(bold.getCharacterSet())];
   const pageWidth = 612;
   const pageHeight = 792;

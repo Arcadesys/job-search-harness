@@ -1,17 +1,12 @@
-import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
+import { hostedJobSql, type Sql } from './job-storage';
 
-type Sql = NeonQueryFunction<false, false>;
 export const JOB_REVIEW_TIME_ZONE = 'America/Chicago';
 export const REVIEW_EVENT_TYPES = ['kept', 'application', 'reply', 'interview', 'offer'] as const;
 export type ReviewEventType = typeof REVIEW_EVENT_TYPES[number];
 const MANUAL_REVIEW_EVENT_TYPES = ['kept', 'reply', 'interview', 'offer'] as const;
 const SITE_OUTCOME_TYPES = ['hiring_inquiry', 'conversation_booked'] as const;
 
-function db(): Sql {
-  const url = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!url) throw new Error('Private job database is not configured.');
-  return neon(url);
-}
+const db = hostedJobSql;
 
 export function centralDate(now = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: JOB_REVIEW_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);

@@ -8,7 +8,7 @@ const navigation: { id: View; label: string; href: string }[] = [
   { id: 'review', label: 'Weekly review', href: '/jobs/review' },
   { id: 'settings', label: 'Search settings', href: '/jobs/settings' },
 ];
-export default function JobsShell({ active, children, truthReview = false }: { active: View; children: React.ReactNode; truthReview?: boolean }) {
+export default function JobsShell({ active, children, truthReview = false, sessionLabel = 'GitHub sign-in' }: { active: View; children: React.ReactNode; truthReview?: boolean; sessionLabel?: string }) {
   return <div className={`jobsWorkspace jobsApp${truthReview ? ' jobsTruthApp' : ''}`}>
     <a className="jobsSkip" href="#jobs-content">Skip to content</a>
     <aside className="jobsSidebar" aria-label="Private job workspace navigation">
@@ -17,7 +17,7 @@ export default function JobsShell({ active, children, truthReview = false }: { a
       <p className="jobsSidebarNote">Your applications and résumé truths stay private.</p>
     </aside>
     <div className="jobsMainColumn">
-      <div className="jobsTopbar"><span>Job Desk</span><span className="jobsPrivateBadge">Private · GitHub sign-in</span></div>
+      <div className="jobsTopbar"><span>Job Desk</span><span className="jobsPrivateBadge">Private · {sessionLabel}</span></div>
       <main id="jobs-content" className="jobsContent">{children}</main>
     </div>
   </div>;

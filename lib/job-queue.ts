@@ -1,16 +1,11 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
+import { hostedJobSql, type Sql } from './job-storage';
 import { canAccessJobs, configuredGithubAccountIds } from '@/lib/jobs-access';
 
-type Sql = NeonQueryFunction<false, false>;
 export const BATCH_ITEM_STATUSES = ['queued', 'preparing', 'awaiting_approval', 'submitted', 'blocked', 'skipped'] as const;
 export type BatchItemStatus = typeof BATCH_ITEM_STATUSES[number];
 
-function db(): Sql {
-  const url = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!url) throw new Error('Private job database is not configured.');
-  return neon(url);
-}
+const db = hostedJobSql;
 
 export function hashMcpToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -63,7 +58,7 @@ export async function createApplicationBatch(ownerId: string, leadIds: string[],
   const rows = await sql`WITH eligible AS (
       SELECT l.id AS lead_id FROM job_leads l
       JOIN jsonb_array_elements_text(${values}::jsonb) AS requested(id) ON requested.id=l.id
-      WHERE l.decision='keep'
+      WHERE l.decision='keep' AND l.application_stage IS DISTINCT FROM 'applied'
         AND NOT EXISTS (
           SELECT 1 FROM job_application_batch_items previous
           WHERE previous.owner_id=${ownerId} AND previous.lead_id=l.id
@@ -111,7 +106,7 @@ export async function selectApplicationBatch(ownerId: string, batchId: string, s
 
 export async function listEligiblePursuedLeads(ownerId: string, sql: Sql = db()) {
   return await sql`SELECT l.id,l.title,l.organization FROM job_leads l
-    WHERE l.decision='keep' AND NOT EXISTS (
+    WHERE l.decision='keep' AND l.application_stage IS DISTINCT FROM 'applied' AND NOT EXISTS (
       SELECT 1 FROM job_application_batch_items i
       WHERE i.owner_id=${ownerId} AND i.lead_id=l.id AND i.status IN ('queued','preparing','awaiting_approval','submitted')
     ) ORDER BY l.discovered_at DESC LIMIT 500`;

@@ -1,14 +1,9 @@
-import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
+import { hostedJobSql, type Sql } from './job-storage';
 import { listResumeTruth, type TruthClaim } from '@/lib/resume-truth';
 
 export const DRAFT_MODEL = 'gpt-6-luna';
 export const MONTHLY_AI_BUDGET_USD = 8.5;
-type Sql = NeonQueryFunction<false, false>;
-const db = (): Sql => {
-  const url = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!url) throw new Error('Private job database is not configured.');
-  return neon(url);
-};
+const db = hostedJobSql;
 
 export function estimateLunaCost(input: number, output: number): number {
   return (input * 0.1 + output * 0.5) / 1_000_000;

@@ -7,6 +7,7 @@ import { startJobdesk } from './server';
 import { brokerCall } from './client';
 import { leadIdForUrl } from '../../lib/job-discovery';
 import { tempRoot, posixModes } from '../../tests/fixtures/temp-root';
+import { sampleResume } from '../../tests/fixtures/sample-resume';
 
 function raw(origin: string, headers: Record<string, string>) {
   return new Promise<number>((resolve, reject) => {
@@ -23,6 +24,7 @@ test('real foreground broker: IPC, local browser session, Host/Origin/CSRF, thin
   const started = performance.now();
   const root = await tempRoot('jobdesk-ipc-');
   const runtime = await startJobdesk({ root });
+  await runtime.service({ method: 'truth.importResume', args: [sampleResume] });
   try {
     const call = (method: any, args: any[] = []) => brokerCall(method, args, runtime.socketPath);
     const health = await call('health');

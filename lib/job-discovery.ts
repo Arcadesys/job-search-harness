@@ -1,16 +1,19 @@
 import { createHash } from 'node:crypto';
 import type { Sql } from './job-storage';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
+import { z } from 'zod';
 
 export const SEARCH_CAP = 300;
-export const DEFAULT_SEARCHES = [
-  { id: 'ai-chicago', lane: 'AI developer', location: 'Chicago', query: 'AI developer OR machine learning engineer jobs Chicago' },
-  { id: 'ai-remote', lane: 'AI developer', location: 'Remote', query: 'remote AI developer OR machine learning engineer jobs' },
-  { id: 'fde-chicago', lane: 'Forward-deployed engineer', location: 'Chicago', query: 'forward deployed engineer OR customer engineer jobs Chicago' },
-  { id: 'fde-remote', lane: 'Forward-deployed engineer', location: 'Remote', query: 'remote forward deployed engineer OR customer engineer jobs' },
-  { id: 'product-chicago', lane: 'Technical program/product ownership', location: 'Chicago', query: 'technical program manager OR technical product manager jobs Chicago' },
-  { id: 'product-remote', lane: 'Technical program/product ownership', location: 'Remote', query: 'remote technical program manager OR technical product manager jobs' },
-] as const;
+export const MAX_SEARCHES = 20;
+export const searchQuerySchema = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,59}$/).optional(),
+  lane: z.string().trim().min(1).max(120),
+  location: z.string().trim().max(120),
+  query: z.string().trim().min(8).max(500),
+  feedUrl: z.string().trim().max(2000),
+  enabled: z.boolean(),
+}).strict();
+export type SearchQueryInput = z.input<typeof searchQuerySchema>;
 
 export type SearchResult = { title: string; url: string; description?: string; age?: string; profile?: { long_name?: string; name?: string } };
 
@@ -65,27 +68,39 @@ export function parseGoogleAlertsFeed(xml: string): SearchResult[] {
   }).filter((entry: SearchResult) => entry.title && entry.url);
 }
 
-export async function initializeSearchQueries(sql: Sql): Promise<void> {
-  const values = JSON.stringify(DEFAULT_SEARCHES.map((query) => ({ ...query, enabled: true })));
-  await sql`WITH seeds AS (
-    SELECT * FROM jsonb_to_recordset(${values}::jsonb) AS x(id text, lane text, location text, query text, enabled boolean)
-  ) INSERT INTO job_search_queries (id,lane,location,query,enabled)
-    SELECT id,lane,location,query,enabled FROM seeds ON CONFLICT (id) DO NOTHING`;
-}
-
 export async function listSearchQueries(sql: Sql) {
-  await initializeSearchQueries(sql);
   return await sql`SELECT id,lane,location,query,feed_url AS "feedUrl",enabled FROM job_search_queries ORDER BY id`;
 }
 
-export async function saveSearchQueries(queries: Array<{ id: string; query: string; feedUrl: string; enabled: boolean }>, sql: Sql): Promise<void> {
-  const allowed = new Set<string>(DEFAULT_SEARCHES.map((item) => item.id));
-  if (queries.length !== 6 || queries.some((item) => !allowed.has(item.id) || item.query.trim().length < 8 || item.query.length > 500)) throw new Error('Provide an edited query for each of the six defaults.');
-  const payload = JSON.stringify(queries.map((item) => ({ ...item, query: item.query.trim(), feedUrl: item.feedUrl.trim() ? validateGoogleAlertsFeedUrl(item.feedUrl) : '' })));
-  await sql`WITH changes AS (
-    SELECT * FROM jsonb_to_recordset(${payload}::jsonb) AS x(id text, query text, "feedUrl" text, enabled boolean)
-  ) UPDATE job_search_queries q SET query=c.query,feed_url=c."feedUrl",enabled=c.enabled,updated_at=now()
-    FROM changes c WHERE q.id=c.id`;
+const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'search';
+
+/** Replaces the whole list. Existing IDs are kept so lead provenance
+ * (google-alerts:<id>) stays meaningful; new searches get readable IDs. */
+export async function saveSearchQueries(raw: SearchQueryInput[], sql: Sql): Promise<void> {
+  if (raw.length > MAX_SEARCHES) throw new Error(`Keep at most ${MAX_SEARCHES} searches.`);
+  const queries = raw.map((item) => searchQuerySchema.parse(item));
+  const used = new Set(queries.flatMap((item) => item.id ? [item.id] : []));
+  if (used.size !== queries.filter((item) => item.id).length) throw new Error('Each search must appear once.');
+  const payload = JSON.stringify(queries.map((item) => {
+    let id = item.id;
+    if (!id) {
+      const base = slug(`${item.lane} ${item.location}`);
+      id = base;
+      for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+      used.add(id);
+    }
+    return { id, lane: item.lane, location: item.location, query: item.query,
+      feedUrl: item.feedUrl ? validateGoogleAlertsFeedUrl(item.feedUrl) : '', enabled: item.enabled };
+  }));
+  await sql`WITH incoming AS (
+      SELECT * FROM jsonb_to_recordset(${payload}::jsonb)
+        AS x(id text, lane text, location text, query text, "feedUrl" text, enabled boolean)
+    ), removed AS (
+      DELETE FROM job_search_queries WHERE id NOT IN (SELECT id FROM incoming)
+    ) INSERT INTO job_search_queries (id,lane,location,query,feed_url,enabled)
+      SELECT id,lane,location,query,"feedUrl",enabled FROM incoming
+      ON CONFLICT (id) DO UPDATE SET lane=EXCLUDED.lane,location=EXCLUDED.location,query=EXCLUDED.query,
+        feed_url=EXCLUDED.feed_url,enabled=EXCLUDED.enabled,updated_at=now()`;
 }
 
 export async function saveManualLead(input: { url: string; title: string; organization?: string; location?: string; notes?: string }, sql: Sql): Promise<void> {
@@ -203,9 +218,8 @@ export async function runDailySearch({ sql, fetcher = fetch, now = new Date() }:
   if (!started.length) return { skipped: true, reason: 'already-run' };
   let calls = 0, attempted = 0, seen = 0, added = 0;
   try {
-    await initializeSearchQueries(sql);
     const queries = await sql`SELECT id,query,feed_url AS "feedUrl" FROM job_search_queries WHERE enabled=true ORDER BY id` as Array<{ id: string; query: string; feedUrl: string }>;
-    if (!queries.length) throw new Error('Enable at least one Google Alert before scanning.');
+    if (!queries.length) throw new Error('Add and enable at least one search with a Google Alert feed before scanning.');
     const failures: string[] = [];
     for (const item of queries) {
       if (!item.feedUrl) { failures.push(`${item.id}: Google Alert RSS feed URL is missing.`); continue; }

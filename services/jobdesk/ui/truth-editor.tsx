@@ -162,7 +162,7 @@ export default function TruthEditor({ claims }: { claims: ReviewClaim[] }) {
   }
 
   return <section className="truthReview" aria-label="Résumé truth review">
-    <header className="truthHeader"><div><h1>Résumé truths</h1><p>Private · Approval supports drafts. Your public résumé stays separate.</p></div><p className="truthProgress"><strong>{progress.reviewed}</strong> reviewed · <strong>{progress.unreviewed}</strong> unreviewed · <strong>{progress.rejected}</strong> rejected</p></header>
+    <header className="truthHeader"><div><h1>Résumé truths</h1><p>Private · Only claims you approve can appear in a draft. Editing here never changes your original résumé.</p></div><p className="truthProgress"><strong>{progress.reviewed}</strong> reviewed · <strong>{progress.unreviewed}</strong> unreviewed · <strong>{progress.rejected}</strong> rejected</p></header>
     <div className="truthFeedback"><p ref={status} tabIndex={-1} role="status" aria-live="polite">{message}</p>
       {error && <div role="alert"><p>{error}</p>{conflicts.length > 0 && <ul>{conflicts.map((id) => <li key={id}>{items.find((item) => item.id === id)?.claim ?? id}</li>)}</ul>}
         {retry && !conflicts.length && <button type="button" disabled={busy} onClick={() => save(retry.changes, retry.approval, retry.undoing)}>Retry save</button>}{' '}<button type="button" disabled={busy} onClick={refresh}>Refresh saved truths</button></div>}

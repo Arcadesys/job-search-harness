@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { build } from 'esbuild';
 import { PGlite } from '@electric-sql/pglite';
-import { listResumeTruth, listResumeTruthVersions, reviewResumeTruth, seedResumeTruth } from '../../lib/resume-truth';
+import { insertNewTruths, listResumeTruth, listResumeTruthVersions, reviewResumeTruth } from '../../lib/resume-truth';
+import { sampleClaims } from './sample-resume';
 import { handleTruthReview } from '../../lib/resume-truth-http';
 import { sqlAdapter } from './truth-database';
 
@@ -14,7 +15,7 @@ async function main() {
   const directory = await mkdtemp(path.join(tmpdir(), 'truth-browser-db-'));
   let db = new PGlite(directory);
   const migration = await readFile('db/migrations/0001_resume_truth.sql', 'utf8');
-  await db.exec(migration); await seedResumeTruth(sqlAdapter(db));
+  await db.exec(migration); await insertNewTruths(sampleClaims(), sqlAdapter(db));
   const built = await build({ entryPoints: ['tests/fixtures/truth-review-entry.tsx'], bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"development"' } });
   const fontCss = ':root { --font-sans: Arial, sans-serif; }';
   const globals = await readFile('services/jobdesk/ui/base.css', 'utf8');
@@ -25,7 +26,7 @@ async function main() {
       res.setHeader('Cache-Control', 'private, no-store');
       if (url.pathname === '/fixture.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(built.outputFiles[0].text); return; }
       if (url.pathname === '/fixture.css') { res.setHeader('Content-Type', 'text/css'); res.end(`${globals}\n${styles}\n${fontCss}`); return; }
-      if (url.pathname === '/__test/reset' && req.method === 'POST') { await db.exec('TRUNCATE resume_truth_versions, resume_truth_claims RESTART IDENTITY'); await seedResumeTruth(sqlAdapter(db)); res.end('{}'); return; }
+      if (url.pathname === '/__test/reset' && req.method === 'POST') { await db.exec('TRUNCATE resume_truth_versions, resume_truth_claims RESTART IDENTITY'); await insertNewTruths(sampleClaims(), sqlAdapter(db)); res.end('{}'); return; }
       if (url.pathname === '/__test/restart' && req.method === 'POST') { await db.close(); db = new PGlite(directory); res.end('{}'); return; }
       if (url.pathname === '/api/jobs/resume-truth') {
         const sql = sqlAdapter(db);

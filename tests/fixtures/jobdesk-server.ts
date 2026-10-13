@@ -1,7 +1,9 @@
 import { startJobdesk } from '../../services/jobdesk/server';
+import { sampleResume } from './sample-resume';
 async function main() {
   if (!process.env.JOBDESK_TEST_ROOT) throw new Error('Private test directory required.');
   const runtime = await startJobdesk({ root: process.env.JOBDESK_TEST_ROOT });
+  await runtime.service({ method: 'truth.importResume', args: [sampleResume] });
   console.log(JSON.stringify({ origin: runtime.origin, socketPath: runtime.socketPath }));
   let closing = false;
   const shutdown = async () => {

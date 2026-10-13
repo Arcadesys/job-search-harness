@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import { projectTruthSchema, reviewBatchSchema } from '../../lib/resume-truth-review';
+import { settingsSchema } from '../../lib/jobdesk-settings';
+import { MAX_SEARCHES, searchQuerySchema } from '../../lib/job-discovery';
+import { projectTruthSchema, resumeImportSchema, reviewBatchSchema } from '../../lib/resume-truth-review';
 import { leaseSchema, claimSchema } from './queue';
 import { draftBindingSchema } from './submission-draft';
-import { truthReconciliationSchema } from './truth-reconciliation';
 import { manualDraftSchema } from './manual-draft';
 
 const id = z.string().regex(/^[a-f0-9]{64}$/);
@@ -14,7 +15,8 @@ export const methodSchemas = {
   'truth.versions': z.tuple([z.string().min(1).max(160)]),
   'truth.review': z.tuple([reviewBatchSchema]),
   'truth.addProject': z.tuple([projectTruthSchema]),
-  'truth.reconcileHosted': z.tuple([truthReconciliationSchema]),
+  'truth.importResume': z.tuple([resumeImportSchema]),
+  'truth.importText': z.tuple([z.string().min(1).max(100_000), z.string().min(8).max(1000)]),
   'leads.list': z.tuple([]),
   'leads.add': z.tuple([
     z
@@ -58,20 +60,7 @@ export const methodSchemas = {
       .max(100),
   ]),
   'search.settings': z.tuple([]),
-  'search.save': z.tuple([
-    z
-      .array(
-        z
-          .object({
-            id: z.string().max(60),
-            query: z.string().max(500),
-            feedUrl: z.string().max(2000),
-            enabled: z.boolean(),
-          })
-          .strict(),
-      )
-      .length(6),
-  ]),
+  'search.save': z.tuple([z.array(searchQuerySchema).max(MAX_SEARCHES)]),
   'search.run': z.tuple([]),
   'draft.read': z.tuple([id]),
   'draft.posting': z.tuple([id, z.string().min(200).max(30000), z.string().min(8).max(500)]),
@@ -133,6 +122,8 @@ export const methodSchemas = {
   backup: z.tuple([]),
   'browser.open': z.tuple([]),
   'owner.shutdown': z.tuple([]),
+  'settings.read': z.tuple([]),
+  'settings.save': z.tuple([settingsSchema]),
 } as const;
 export type Method = keyof typeof methodSchemas;
 export type Args<M extends Method> = z.infer<(typeof methodSchemas)[M]>;

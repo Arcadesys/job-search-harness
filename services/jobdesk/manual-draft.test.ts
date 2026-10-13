@@ -5,6 +5,7 @@ import { JobdeskStore } from './store';
 import { createService, initializeService } from './service';
 import { leadIdForUrl } from '../../lib/job-discovery';
 import { tempRoot } from '../../tests/fixtures/temp-root';
+import { loadSample } from '../../tests/fixtures/sample-resume';
 
 test('manual materials persist without a provider call and retain approval, truth and duplicate guards', async () => {
   const root = await tempRoot('jobdesk-manual-');
@@ -14,6 +15,7 @@ test('manual materials persist without a provider call and retain approval, trut
   globalThis.fetch = async () => { requests++; throw new Error('No provider call permitted in this fixture.'); };
   try {
     await initializeService(store);
+    await loadSample(store);
     const service = createService(store);
     const call = (method: any, args: any[] = []) => service({ method, args }) as Promise<any>;
     const truths = await call('truth.list');

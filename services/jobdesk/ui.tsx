@@ -40,6 +40,111 @@ const heading = (title: string, description: string) => (
   </header>
 );
 
+const today = () => new Date().toISOString().slice(0, 10);
+
+function PasteClaims({ busy, onSubmit, heading: title = 'Paste résumé text' }: { busy: boolean; heading?: string; onSubmit: (text: string, note: string) => void }) {
+  return (
+    <form
+      className="jobsPanel"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit(value(event.currentTarget, 'text'), value(event.currentTarget, 'note'));
+      }}
+    >
+      <h2>{title}</h2>
+      <p>Each line becomes one claim to review. Bullets are removed and lines you already have are skipped.</p>
+      <label>
+        Résumé text
+        <textarea name="text" rows={10} required maxLength={100000} />
+      </label>
+      <label>
+        Where this came from
+        <input name="note" required minLength={8} maxLength={1000} defaultValue={`Pasted into the cockpit on ${today()}`} />
+      </label>
+      <button disabled={busy}>Add as claims to review</button>
+    </form>
+  );
+}
+
+function ResumeOnboarding({ busy, onPaste }: { busy: boolean; onPaste: (text: string, note: string) => void }) {
+  return (
+    <>
+      {heading('Add your résumé', 'Your résumé becomes a bank of claims. Nothing is used in an application until you review it.')}
+      <section className="jobsPanel">
+        <h2>Easiest: ask your AI assistant</h2>
+        <p>
+          In Claude or ChatGPT, attach your résumé and say: <q>Import my résumé into Job Search Harness.</q> It copies your
+          wording into this list, grouped by role, and then you review each claim here.
+        </p>
+      </section>
+      <PasteClaims busy={busy} onSubmit={onPaste} heading="Or paste it yourself" />
+    </>
+  );
+}
+
+type SearchRow = { key: string; id?: string; lane: string; location: string; query: string; feedUrl: string; enabled: boolean };
+function SearchEditor({ queries, busy, onSave }: { queries: SqlRow[]; busy: boolean; onSave: (rows: Omit<SearchRow, 'key'>[]) => void }) {
+  const [rows, setRows] = useState<SearchRow[]>(() =>
+    queries.map((query) => ({ key: String(query.id), id: String(query.id), lane: String(query.lane), location: String(query.location ?? ''),
+      query: String(query.query), feedUrl: String(query.feedUrl ?? ''), enabled: Boolean(query.enabled) })));
+  const update = (key: string, patch: Partial<SearchRow>) => setRows((current) => current.map((row) => row.key === key ? { ...row, ...patch } : row));
+  return (
+    <form
+      className="jobsPanel"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave(rows.map(({ key: _key, id, ...row }) => (id ? { id, ...row } : row)));
+      }}
+    >
+      <h2>Your job searches</h2>
+      <p>
+        Create a Google Alert for each search (for example <q>remote data analyst jobs</q>), choose <q>Deliver to: RSS feed</q>,
+        and paste its feed address here. Leave the address empty to keep a search as a note.
+      </p>
+      {!rows.length && <p>No searches yet. Add one for each kind of role and place you are looking for.</p>}
+      {rows.map((row, index) => (
+        <fieldset key={row.key}>
+          <legend>Search {index + 1}</legend>
+          <div className="jobsFormGrid">
+            <label>
+              Role or field
+              <input required maxLength={120} value={row.lane} onChange={(event) => update(row.key, { lane: event.target.value })} />
+            </label>
+            <label>
+              Location
+              <input maxLength={120} placeholder="Remote, a city, or leave blank" value={row.location}
+                onChange={(event) => update(row.key, { location: event.target.value })} />
+            </label>
+          </div>
+          <label>
+            Search words
+            <textarea required minLength={8} maxLength={500} value={row.query} onChange={(event) => update(row.key, { query: event.target.value })} />
+          </label>
+          <label>
+            Google Alert RSS feed address
+            <input type="url" value={row.feedUrl} onChange={(event) => update(row.key, { feedUrl: event.target.value })} />
+          </label>
+          <label>
+            <input type="checkbox" checked={row.enabled} onChange={(event) => update(row.key, { enabled: event.target.checked })} />
+            Include in scans
+          </label>
+          <button type="button" onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}>
+            Remove search {index + 1}
+          </button>
+        </fieldset>
+      ))}
+      <button
+        type="button"
+        disabled={rows.length >= 20}
+        onClick={() => setRows((current) => [...current, { key: crypto.randomUUID(), lane: '', location: '', query: '', feedUrl: '', enabled: true }])}
+      >
+        Add a search
+      </button>
+      <button disabled={busy}>Save searches</button>
+    </form>
+  );
+}
+
 function Cockpit({ data }: { data: any }) {
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
@@ -79,7 +184,14 @@ function Cockpit({ data }: { data: any }) {
         </pre>
       )}
       {active === 'truths' ? (
-        <TruthEditor claims={data as ReviewClaim[]} />
+        (data as ReviewClaim[]).length ? (
+          <>
+            <TruthEditor claims={data as ReviewClaim[]} />
+            <PasteClaims busy={busy} onSubmit={(text, note) => void run('truth.importText', [text, note])} heading="Add more claims" />
+          </>
+        ) : (
+          <ResumeOnboarding busy={busy} onPaste={(text, note) => void run('truth.importText', [text, note])} />
+        )
       ) : detail ? (
         <>
           {heading(
@@ -306,59 +418,32 @@ function Cockpit({ data }: { data: any }) {
         </>
       ) : active === 'settings' ? (
         <>
-          {heading('Search settings', 'Scans run when requested while this Mac is awake.')}
+          {heading('Settings', 'Searches, time zone and backups. Scans run only when you ask, while this computer is awake.')}
           <section className="jobsPanel">
             <h2>Feed status</h2>
             <p>
-              {data.status.usage.callsUsed} of {data.status.usage.callCap} monthly polls used.
+              {data.search.status.usage.callsUsed} of {data.search.status.usage.callCap} monthly polls used.
             </p>
             <button disabled={busy} onClick={() => void run('search.run', [], false)}>
               Scan feeds now
             </button>
             <p>One successful scan per UTC day; failed scans may be retried.</p>
           </section>
+          <SearchEditor queries={data.search.queries} busy={busy} onSave={(rows) => void run('search.save', [rows])} />
           <form
             className="jobsPanel"
-            onSubmit={form('search.save', (f) => [
-              data.queries.map((query: SqlRow) => ({
-                id: query.id,
-                query: value(f, `query:${query.id}`),
-                feedUrl: value(f, `feed:${query.id}`),
-                enabled: new FormData(f).has(`enabled:${query.id}`),
-              })),
-            ])}
+            onSubmit={form('settings.save', (f) => [{ ...data.settings, timeZone: value(f, 'timeZone') }])}
           >
-            <h2>Google Alerts feeds</h2>
-            {data.queries.map((query: SqlRow) => (
-              <fieldset key={query.id}>
-                <legend>
-                  {query.lane} · {query.location}
-                </legend>
-                <label>
-                  Reference terms
-                  <textarea
-                    name={`query:${query.id}`}
-                    required
-                    minLength={8}
-                    maxLength={500}
-                    defaultValue={query.query}
-                  />
-                </label>
-                <label>
-                  Google Alert RSS URL
-                  <input name={`feed:${query.id}`} type="url" defaultValue={query.feedUrl} />
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    name={`enabled:${query.id}`}
-                    defaultChecked={query.enabled}
-                  />
-                  Enable feed
-                </label>
-              </fieldset>
-            ))}
-            <button disabled={busy}>Save settings</button>
+            <h2>Time zone</h2>
+            <p>Weekly reviews and application dates use this zone.</p>
+            <label>
+              Time zone
+              <input name="timeZone" list="timeZones" required defaultValue={data.settings.timeZone} />
+            </label>
+            <datalist id="timeZones">
+              {Intl.supportedValuesOf('timeZone').map((zone) => <option key={zone} value={zone} />)}
+            </datalist>
+            <button disabled={busy}>Save time zone</button>
           </form>
           <section className="jobsPanel">
             <h2>Local backup</h2>
@@ -447,6 +532,17 @@ function Cockpit({ data }: { data: any }) {
             'Today',
             'Review your selected batch and resolve uncertain submissions before continuing.',
           )}
+          {data.setup && (!data.setup.truths || !data.setup.reviewed || !data.setup.searches) && (
+            <section className="jobsPanel" aria-labelledby="get-started">
+              <h2 id="get-started">Get started</h2>
+              <ol>
+                <li>{data.setup.truths ? '✓ ' : ''}<a href="/jobs/truths">Add your résumé</a></li>
+                <li>{data.setup.reviewed ? '✓ ' : ''}<a href="/jobs/truths">Review and approve your claims</a></li>
+                <li>{data.setup.searches ? '✓ ' : ''}<a href="/jobs/settings">Add the job searches you want to follow</a></li>
+                <li><a href="/jobs/leads">Save a job you want to apply for</a></li>
+              </ol>
+            </section>
+          )}
           <section className="jobsPanel">
             <h2>Application batches</h2>
             {data.batches.batches.map((batch: SqlRow) => (
@@ -487,6 +583,7 @@ function Cockpit({ data }: { data: any }) {
               )}
             </section>
           ))}
+          {data.items.items.some((item: SqlRow) => item.status === 'blocked') && (
           <section className="jobsPanel">
             <h2>Submission reconciliation</h2>
             <p>
@@ -510,6 +607,7 @@ function Cockpit({ data }: { data: any }) {
               <button disabled={busy}>Record evidence; keep item blocked</button>
             </form>
           </section>
+          )}
         </>
       )}
     </JobsShell>
@@ -538,12 +636,17 @@ async function main() {
     let data: any;
     if (section === 'truths') data = await rpc('truth.list');
     else if (section === 'leads') data = await rpc('leads.list');
-    else if (section === 'settings') data = await rpc('search.settings');
+    else if (section === 'settings') data = { search: await rpc('search.settings'), settings: await rpc('settings.read') };
     else if (section === 'review') data = await rpc('review.read');
     else if (section) data = await rpc('draft.read', [section]);
     else {
-      const batches = await rpc('batches.list');
+      const [batches, claims, search] = await Promise.all([rpc('batches.list'), rpc('truth.list'), rpc('search.settings')]);
       data = {
+        setup: {
+          truths: claims.length,
+          reviewed: claims.filter((claim: ReviewClaim) => claim.reviewStatus === 'reviewed').length,
+          searches: search.queries.length,
+        },
         batches,
         items: batches.selectedBatchId
           ? await rpc('batches.items', [batches.selectedBatchId])
@@ -554,11 +657,11 @@ async function main() {
   } catch (error) {
     root.render(
       <main style={{ padding: '2rem' }}>
-        <h1>Local Job Desk</h1>
+        <h1>Job Search Harness</h1>
         <p role="alert">
           {error instanceof Error ? error.message : 'Unable to open the workspace.'}
         </p>
-        <p>Start Jobdesk and use its local open command to launch a private session.</p>
+        <p>Open Job Search Harness again from your AI assistant or its open command to start a private session.</p>
         <button onClick={() => location.reload()}>Retry</button>
       </main>,
     );

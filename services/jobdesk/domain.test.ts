@@ -6,12 +6,13 @@ import { createService, initializeService } from './service';
 import {
   runDailySearch,
   saveSearchQueries,
-  DEFAULT_SEARCHES,
+  listSearchQueries,
   leadIdForUrl,
 } from '../../lib/job-discovery';
 import { assessAndDraft, MONTHLY_AI_BUDGET_USD } from '../../lib/job-drafting';
-import { centralDate, getReviewWeeks, listWeeklyReview } from '../../lib/jobs-review';
+import { localDate, getReviewWeeks, listWeeklyReview } from '../../lib/jobs-review';
 import { tempRoot } from '../../tests/fixtures/temp-root';
+import { loadSample } from '../../tests/fixtures/sample-resume';
 
 test('real SQL budgets, successful scan dedupe, failed/unmeasured provider calls and Chicago daylight saving', async () => {
   const root = await tempRoot('jobdesk-domain-');
@@ -20,17 +21,18 @@ test('real SQL budgets, successful scan dedupe, failed/unmeasured provider calls
     oldKey = process.env.OPENAI_API_KEY;
   try {
     await initializeService(store);
+    await loadSample(store);
     const call = createService(store);
     const sql = store.sql;
     await saveSearchQueries(
-      DEFAULT_SEARCHES.map((query) => ({
-        id: query.id,
-        query: query.query,
-        feedUrl: query.id === 'ai-chicago' ? 'https://www.google.com/alerts/feeds/1/2' : '',
-        enabled: query.id === 'ai-chicago',
-      })),
+      [
+        { lane: 'Data analyst', location: 'Remote', query: 'remote data analyst jobs', feedUrl: 'https://www.google.com/alerts/feeds/1/2', enabled: true },
+        { lane: 'Data analyst', location: 'Remote', query: 'remote analytics engineer jobs', feedUrl: '', enabled: false },
+      ],
       sql,
     );
+    assert.deepEqual((await listSearchQueries(sql)).map((row) => row.id), ['data-analyst-remote', 'data-analyst-remote-2'],
+      'new searches get readable, unique IDs');
     let polls = 0;
     const fetcher = async () => {
       polls++;
@@ -117,17 +119,18 @@ test('real SQL budgets, successful scan dedupe, failed/unmeasured provider calls
       (await sql`SELECT unknown_cost_requests FROM job_ai_usage`)[0].unknown_cost_requests,
       1,
     );
-    assert.equal(centralDate(new Date('2026-03-08T05:59:00Z')), '2026-03-07');
-    assert.equal(centralDate(new Date('2026-03-08T08:00:00Z')), '2026-03-08');
-    assert.equal(centralDate(new Date('2026-11-01T06:59:00Z')), '2026-11-01');
-    assert.equal(centralDate(new Date('2026-11-01T07:01:00Z')), '2026-11-01');
+    assert.equal(localDate(new Date('2026-03-08T05:59:00Z'), 'America/Chicago'), '2026-03-07');
+    assert.equal(localDate(new Date('2026-03-08T08:00:00Z'), 'America/Chicago'), '2026-03-08');
+    assert.equal(localDate(new Date('2026-11-01T06:59:00Z'), 'America/Chicago'), '2026-11-01');
+    assert.equal(localDate(new Date('2026-11-01T07:01:00Z'), 'America/Chicago'), '2026-11-01');
     const weeks = getReviewWeeks('2026-11-01', 2);
     assert.deepEqual(weeks, ['2026-10-19', '2026-10-26']);
-    assert.equal((await listWeeklyReview(weeks, sql)).length, 2);
+    assert.equal((await listWeeklyReview(weeks, sql, 'America/Chicago')).length, 2);
     // A crashed owner's durable model marker closes its recorded month's cap.
     await sql`UPDATE job_ai_usage SET estimated_usd=0,unknown_cost_requests=0`;
     await sql`INSERT INTO jobdesk_model_runs(id,usage_month,state) VALUES(gen_random_uuid(),date_trunc('month',now())::date,'pending')`;
     await initializeService(store);
+    await loadSample(store);
     assert.equal(
       (await sql`SELECT unknown_cost_requests FROM job_ai_usage`)[0].unknown_cost_requests,
       1,

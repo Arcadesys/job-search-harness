@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Sql } from './job-storage';
-import { DEFAULT_SEARCHES, ingestLinkedInEmailLeads, ingestSearchResults, leadIdForUrl, normalizeSourceUrl, parseGoogleAlertsFeed, parseLinkedInAlertEmailText, runDailySearch, saveManualLead, saveSearchQueries, updateLead, validateGoogleAlertsFeedUrl } from './job-discovery';
+import { ingestLinkedInEmailLeads, ingestSearchResults, leadIdForUrl, normalizeSourceUrl, parseGoogleAlertsFeed, parseLinkedInAlertEmailText, runDailySearch, saveManualLead, saveSearchQueries, updateLead, validateGoogleAlertsFeedUrl } from './job-discovery';
 
 type FakeSql = Sql;
 function tagged(fn: (text: string, values: unknown[]) => Promise<unknown[]>): FakeSql {
@@ -42,12 +42,6 @@ test('LinkedIn email imports deduplicate and preserve saved decisions on repeat'
   assert.doesNotMatch(statement, /decision\s*=/);
 });
 
-test('six editable defaults span three target lanes and two locations', () => {
-  assert.equal(DEFAULT_SEARCHES.length, 6);
-  assert.deepEqual(new Set(DEFAULT_SEARCHES.map((item) => item.location)), new Set(['Chicago', 'Remote']));
-  assert.equal(new Set(DEFAULT_SEARCHES.map((item) => item.lane)).size, 3);
-  assert.ok(DEFAULT_SEARCHES.every((item) => item.query.length >= 8));
-});
 
 const feedUrl = 'https://www.google.com/alerts/feeds/123456/789012';
 const feedXml = `<feed xmlns="http://www.w3.org/2005/Atom"><entry><title type="html">&lt;b&gt;AI Engineer&lt;/b&gt; · Example</title><link href="https://www.google.com/url?url=https%3A%2F%2Fjobs.example%2Fai%3Futm_source%3Dgoogle"/><content type="html">New opening</content></entry></feed>`;
@@ -144,11 +138,16 @@ test('manual lead and pipeline updates use normalized unique URLs and constraine
   const fake = tagged(async (text) => { statements.push(text); return []; });
   await saveManualLead({ url: 'https://www.example.org/opening?utm_source=email', title: 'Engineer' }, fake);
   await updateLead({ id: 'abc', decision: 'keep', stage: 'interviewing', verification: 'verified' }, fake);
-  await saveSearchQueries(DEFAULT_SEARCHES.map((item) => ({ id: item.id, query: item.query, feedUrl, enabled: true })), fake);
+  await saveSearchQueries([{ lane: 'Data analyst', location: 'Remote', query: 'remote data analyst jobs', feedUrl, enabled: true }], fake);
   assert.match(statements[0], /ON CONFLICT \(source_url\)/);
   assert.match(statements[1], /verification_status=\s*\?/);
-  assert.match(statements[2], /UPDATE job_search_queries/);
+  assert.match(statements[2], /DELETE FROM job_search_queries WHERE id NOT IN/);
+  assert.match(statements[2], /ON CONFLICT \(id\) DO UPDATE/);
   await assert.rejects(() => updateLead({ id: 'abc', decision: 'maybe' }, fake), /Invalid job status/);
-  await assert.rejects(() => saveSearchQueries([{ id: 'unknown', query: 'long enough search query', feedUrl, enabled: true }], fake), /six defaults/);
+  await assert.rejects(() => saveSearchQueries([{ lane: 'Analyst', location: '', query: 'short', feedUrl, enabled: true }], fake));
+  await assert.rejects(() => saveSearchQueries([{ lane: 'Analyst', location: '', query: 'long enough search query', feedUrl: 'https://example.test/feed', enabled: true }], fake), /RSS feed URL/);
+  const twice = { id: 'analyst', lane: 'Analyst', location: '', query: 'long enough search query', feedUrl: '', enabled: true };
+  await assert.rejects(() => saveSearchQueries([twice, twice], fake), /appear once/);
+  await assert.rejects(() => saveSearchQueries(Array.from({ length: 21 }, (_, i) => ({ ...twice, id: `s${i}` })), fake), /at most 20/);
 });
 

@@ -18,7 +18,7 @@ function fakeSql(rows: unknown[] = []) {
 
 test('batch creation selects only pursued leads and excludes any active or submitted application', async () => {
   const fake = fakeSql([{ batchId: 'batch' }]);
-  const result = await createApplicationBatch('172521150', ['a'.repeat(64), 'a'.repeat(64), 'not-a-lead'], fake.query);
+  const result = await createApplicationBatch('owner-1', ['a'.repeat(64), 'a'.repeat(64), 'not-a-lead'], fake.query);
   assert.equal(result.count, 1);
   assert.match(fake.statements[0], /l\.decision='keep'/);
   assert.match(fake.statements[0], /previous\.status IN \('queued','preparing','awaiting_approval','submitted'\)/);
@@ -30,22 +30,22 @@ test('batch creation selects only pursued leads and excludes any active or submi
 
 test('selected batch sorts ahead of the 50-batch history limit', async () => {
   const fake = fakeSql();
-  await listApplicationBatches('172521150', fake.query);
+  await listApplicationBatches('owner-1', fake.query);
   assert.match(fake.statements[0], /ORDER BY \(s\.batch_id=b\.id\) DESC,b\.created_at DESC LIMIT 50/);
 });
 
 test('MCP status updates reject submitted and submission receipts atomically count one weekly application', async () => {
   const noQuery = fakeSql();
-  await assert.rejects(() => updateApplicationBatchItem('172521150', 'item', 'submitted', '', noQuery.query), /confirmed submission/);
+  await assert.rejects(() => updateApplicationBatchItem('owner-1', 'item', 'submitted', '', noQuery.query), /confirmed submission/);
   assert.equal(noQuery.statements.length, 0);
   assert.equal(validBatchStatus('awaiting_approval'), true);
   assert.equal(validBatchStatus('submitted'), true);
   assert.equal(validBatchStatus('unexpected'), false);
 
   const receipt = fakeSql([{ receiptId: 'receipt', idempotencyKey: 'receipt-1234' }]);
-  const result = await recordApplicationReceipt('172521150', 'item', {
+  const result = await recordApplicationReceipt('owner-1', 'item', {
     idempotencyKey: 'receipt-1234', confirmation: 'Application received', confirmationUrl: 'https://jobs.example/confirmation',
-  }, receipt.query);
+  }, receipt.query, 'Europe/Berlin');
   assert.equal(result.receiptId, 'receipt');
   assert.equal(receipt.statements.length, 1);
   assert.match(receipt.statements[0], /job_application_receipts/);
@@ -54,8 +54,9 @@ test('MCP status updates reject submitted and submission receipts atomically cou
   assert.match(receipt.statements[0], /ON CONFLICT \(lead_id,event_type,occurred_on\) DO NOTHING/);
   assert.match(receipt.statements[0], /job_application_batch_items/);
   assert.match(receipt.statements[0], /job_leads/);
-  assert.match(receipt.statements[0], /America\/Chicago/);
-  assert.ok(receipt.values[0].includes('172521150'));
-  await assert.rejects(() => recordApplicationReceipt('172521150', 'item', { idempotencyKey: 'short', confirmation: '' }, receipt.query), /idempotency key/);
+  assert.match(receipt.statements[0], /AT TIME ZONE/);
+  assert.ok(receipt.values[0].includes('Europe/Berlin'), 'the receipt date uses the configured time zone');
+  assert.ok(receipt.values[0].includes('owner-1'));
+  await assert.rejects(() => recordApplicationReceipt('owner-1', 'item', { idempotencyKey: 'short', confirmation: '' }, receipt.query, 'UTC'), /idempotency key/);
 });
 

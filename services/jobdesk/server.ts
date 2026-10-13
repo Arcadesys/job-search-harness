@@ -63,6 +63,9 @@ export async function startJobdesk({
     const sessions = new Map<string, { csrf: string; expires: number }>();
     const tickets = new Map<string, number>();
     const socketPath = brokerEndpoint(store.root);
+    // macOS and Linux cap Unix socket paths at 104 and 108 bytes.
+    if (!windows && Buffer.byteLength(socketPath) > 103)
+      throw new Error(`The data folder path is too long for a local socket (${socketPath}). Set JOBDESK_DATA_DIR to a shorter folder.`);
     // Only the sole database owner can replace its own stale socket, after the
     // database lock has been acquired. It is never a remote listener. Windows
     // named pipes vanish with their process, so there is nothing to remove.
@@ -114,7 +117,7 @@ export async function startJobdesk({
               "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
           });
           res.end(
-            '<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Local Job Desk</title><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>',
+            '<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Job Search Harness</title><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>',
           );
           return;
         }
@@ -326,15 +329,16 @@ async function main() {
     onShutdownRequest: () => void shutdown(),
   });
   console.log(
-    `Local Jobdesk ready at ${runtime.origin}. Run npm run jobs:cli -- open for a private session.`,
+    `Job Search Harness is running at ${runtime.origin}. Run npm run jobs:cli -- open for a private session.`,
   );
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-  main().catch(() => {
+  main().catch((error) => {
+    // Local stderr only (the private owner.log when detached); it holds no record contents.
     console.error(
-      'Jobdesk could not start. Check its private directory, owner lock, and migration ledger.',
+      `Job Search Harness could not start: ${error instanceof Error ? error.message : 'unknown error'}. Check its private directory, owner lock, and migration ledger.`,
     );
     process.exitCode = 1;
   });

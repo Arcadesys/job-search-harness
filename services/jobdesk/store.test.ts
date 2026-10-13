@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readdirSync } from 'node:fs';
 import { cp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -11,6 +12,9 @@ import { leadIdForUrl } from '../../lib/job-discovery';
 import { fixtureReports } from '../../tests/fixtures/jobdesk-reports';
 import { createReviewPacket } from './artifacts';
 import { tempRoot, posixModes } from '../../tests/fixtures/temp-root';
+import { loadSample } from '../../tests/fixtures/sample-resume';
+
+const SHIPPED = readdirSync(MIGRATIONS).filter((file) => /^\d{4}_[a-z_]+\.sql$/.test(file)).length;
 
 test('real disk: migrations, fresh approvals, leases, uncertainty, atomic receipts, snapshots, backup and restart', async () => {
   const root = await tempRoot('jobdesk-disk-');
@@ -21,10 +25,11 @@ test('real disk: migrations, fresh approvals, leases, uncertainty, atomic receip
   try {
     await fixtureReports(root);
     await initializeService(store);
+    await loadSample(store);
     let call = createService(store);
     assert.equal(
       (await store.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count,
-      9,
+      SHIPPED,
     );
     await assert.rejects(JobdeskStore.open(root), /owner/);
     if (posixModes) assert.equal((await stat(path.join(root, 'owner.lock'))).mode & 0o777, 0o600);
@@ -221,6 +226,7 @@ test('real disk: migrations, fresh approvals, leases, uncertainty, atomic receip
     await store.close();
     store = await JobdeskStore.open(root);
     await initializeService(store);
+    await loadSample(store);
     call = createService(store);
     assert.equal(
       ((await call({ method: 'items.read', args: [itemId] })) as any).item.status,
@@ -295,7 +301,7 @@ test('migration drift, unknown schema, failed DDL rollback and explicit crash-lo
     );
     assert.equal(
       (await store.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count,
-      9,
+      SHIPPED,
     );
     await rm(path.join(directory, '0010_failure.sql'));
     await store.sql`INSERT INTO jobdesk_migrations(version,checksum) VALUES('9999_newer.sql','fixture')`;
@@ -321,7 +327,7 @@ test('migration drift, unknown schema, failed DDL rollback and explicit crash-lo
     store = await JobdeskStore.open(root, directory);
     assert.equal(
       (await store.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count,
-      10,
+      SHIPPED + 1,
     );
     const backups = await import('node:fs/promises').then((fs) =>
       fs.readdir(path.join(root, 'backups')),
@@ -330,7 +336,7 @@ test('migration drift, unknown schema, failed DDL rollback and explicit crash-lo
     const manifest = JSON.parse(
       await readFile(path.join(root, 'backups', backups[0], 'manifest.json'), 'utf8'),
     );
-    assert.equal(manifest.migrations.length, 9);
+    assert.equal(manifest.migrations.length, SHIPPED);
   } finally {
     await store.close();
     await rm(root, { recursive: true, force: true });
@@ -343,11 +349,13 @@ test('actual CLI restore stages a real 0008 backup artifact before migration 000
     directory = await tempRoot('jobdesk-legacy-migrations-'),
     restored = await tempRoot('jobdesk-legacy-restored-');
   await cp(MIGRATIONS, directory, { recursive: true });
-  await rm(path.join(directory, '0009_submission_draft_binding.sql'));
+  // Recreate a store from before 0009 by withholding every later migration.
+  for (const file of await readdir(directory)) if (file > '0009') await rm(path.join(directory, file));
   const legacy = await JobdeskStore.open(root, directory);
   let current: JobdeskStore | undefined;
   try {
     await initializeService(legacy);
+    await loadSample(legacy);
     const call = createService(legacy);
     const claims = (await call({ method: 'truth.list', args: [] })) as any[];
     const url = 'https://example.test/jobs/legacy-restore-fixture', leadId = leadIdForUrl(url);
@@ -364,7 +372,7 @@ test('actual CLI restore stages a real 0008 backup artifact before migration 000
       ['--import', 'tsx', 'services/jobdesk/cli.ts', 'restore', backup.directory, restored],
       { cwd: process.cwd() });
     current = await JobdeskStore.open(restored);
-    assert.equal((await current.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count, 9);
+    assert.equal((await current.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count, SHIPPED);
     assert.deepEqual(await readFile(path.join(restored, packet.relativePath)), bytes);
     if (posixModes) assert.equal((await stat(path.join(restored, packet.relativePath))).mode & 0o777, 0o600);
     const preUpgrade = await readdir(path.join(restored, 'backups'));

@@ -24,24 +24,31 @@ export type TruthSection = 'Personal details' | 'Work experience' | 'Skills' | '
 export const truthSections: TruthSection[] = ['Personal details', 'Work experience', 'Skills', 'Education', 'Other claims'];
 export type TruthGroup = { id: string; section: TruthSection; label: string; claims: ReviewClaim[] };
 
-// Source IDs identify the original import, but positional IDs alone are not evidence
-// of a relationship after edits/reordering. Require the known wording on both sides.
-const relatedRules = [
-  { accomplishment: 'accomplishment.1', role: 'experience.1.', wording: /agentic-coding adoption/i },
-  { accomplishment: 'accomplishment.2', role: 'experience.1.', wording: /Devin adoption/i },
-  { accomplishment: 'accomplishment.3', role: 'experience.1.', wording: /March 2026 roadshow/i },
-  { accomplishment: 'accomplishment.4', role: 'experience.1.', wording: /Built Wavelength/i },
-  { accomplishment: 'accomplishment.5', role: 'experience.1.', wording: /Within four days of arrival/i },
-  { accomplishment: 'accomplishment.6', role: 'experience.3.', wording: /planning time by 50%/i },
-  { accomplishment: 'accomplishment.7', role: 'experience.4.', wording: /throughput by 400%/i },
-  { accomplishment: 'accomplishment.8', role: 'experience.5.', wording: /\$1\.5B in locked loan volume/i },
-];
+// An accomplishment headline usually restates one role bullet. Pair them only
+// when the wording clearly overlaps one bullet more than any other, so edits or
+// reordering never invent a relationship from positional IDs alone.
+const STOP_WORDS = new Set('a an the and or of to in for with by on at as from into over across within its their our'.split(' '));
+const words = (text: string) => new Set((text.toLowerCase().match(/[a-z0-9$%.]+/g) ?? []).filter((word) => !STOP_WORDS.has(word)));
+function overlap(a: Set<string>, b: Set<string>) {
+  let shared = 0;
+  for (const word of a) if (b.has(word)) shared++;
+  const union = a.size + b.size - shared;
+  return union ? shared / union : 0;
+}
+export const PAIR_MIN_OVERLAP = 0.3;
+export const PAIR_MIN_LEAD = 0.2;
 export function relatedTruthPairs(claims: ReviewClaim[]): Map<string, string> {
   const pairs = new Map<string, string>();
-  for (const rule of relatedRules) {
-    const summary = claims.find((claim) => claim.id === rule.accomplishment && rule.wording.test(claim.claim));
-    const matches = claims.filter((claim) => claim.id.startsWith(`${rule.role}claim.`) && rule.wording.test(claim.claim));
-    if (summary && matches.length === 1) pairs.set(matches[0].id, summary.id);
+  const bullets = claims.filter((claim) => /^experience\.\d+\.claim\.\d+$/.test(claim.id)).map((claim) => ({ id: claim.id, words: words(claim.claim) }));
+  const taken = new Set<string>();
+  for (const summary of claims.filter((claim) => /^accomplishment\.\d+$/.test(claim.id))) {
+    const target = words(summary.claim);
+    const ranked = bullets.map((bullet) => ({ id: bullet.id, score: overlap(target, bullet.words) })).sort((a, b) => b.score - a.score);
+    const [best, next] = ranked;
+    if (best && best.score >= PAIR_MIN_OVERLAP && best.score - (next?.score ?? 0) >= PAIR_MIN_LEAD && !taken.has(best.id)) {
+      pairs.set(best.id, summary.id);
+      taken.add(best.id);
+    }
   }
   return pairs;
 }
@@ -82,4 +89,65 @@ export function editedStatus(original: TruthClaim, draft: Pick<TruthClaim, 'clai
 
 export function reviewedTruthsForDraft(claims: TruthClaim[]) {
   return claims.filter((claim) => claim.reviewStatus === 'reviewed').map(({ id, claim, sourceNote }) => ({ id, claim, sourceNote }));
+}
+
+const line = z.string().trim().min(1).max(4000);
+/** A résumé the user's AI client extracted from their own document. */
+export const resumeImportSchema = z.object({
+  sourceNote: z.string().trim().min(8).max(1000),
+  profile: z.object({
+    name: line.optional(), headline: line.optional(), location: line.optional(), email: line.optional(),
+    phone: line.optional(), website: line.optional(), linkedin: line.optional(), github: line.optional(),
+  }).strict().default({}),
+  summary: line.optional(),
+  accomplishments: z.array(line).max(40).default([]),
+  experience: z.array(z.object({
+    employer: line, location: z.string().trim().max(200).optional(), title: line,
+    dates: z.string().trim().max(100).optional(), bullets: z.array(line).max(40).default([]),
+  }).strict()).max(40).default([]),
+  earlier: z.array(line).max(40).default([]),
+  skills: z.array(line).max(60).default([]),
+  education: z.array(line).max(30).default([]),
+  other: z.array(line).max(100).default([]),
+}).strict();
+export type ResumeImport = z.input<typeof resumeImportSchema>;
+
+/** Assigns the ID shapes groupTruths understands. Every claim starts unreviewed. */
+export function resumeImportClaims(raw: ResumeImport): TruthClaim[] {
+  const input = resumeImportSchema.parse(raw);
+  const claims: TruthClaim[] = [];
+  const add = (id: string, claim: string | undefined) => {
+    if (claim?.trim()) claims.push({ id, claim: claim.trim(), sourceNote: input.sourceNote, reviewStatus: 'unreviewed' });
+  };
+  for (const [key, value] of Object.entries(input.profile)) add(`profile.${key}`, value);
+  add('summary', input.summary);
+  input.accomplishments.forEach((text, index) => add(`accomplishment.${index + 1}`, text));
+  input.experience.forEach((role, index) => {
+    const id = `experience.${index + 1}`;
+    add(`${id}.employer`, role.location ? `${role.employer} — ${role.location}` : role.employer);
+    add(`${id}.title`, role.title);
+    add(`${id}.dates`, role.dates);
+    role.bullets.forEach((bullet, bulletIndex) => add(`${id}.claim.${bulletIndex + 1}`, bullet));
+  });
+  input.earlier.forEach((text, index) => add(`earlier.${index + 1}`, text));
+  input.skills.forEach((text, index) => add(`skills.${index + 1}`, text));
+  input.education.forEach((text, index) => add(`education.${index + 1}`, text));
+  input.other.forEach((text, index) => add(`other.${index + 1}`, text));
+  return claims;
+}
+
+/** Plain pasted text: one claim per non-trivial line, bullets and headings stripped. */
+export function pastedResumeLines(text: string): string[] {
+  if (text.length > 100_000) throw new Error('Paste up to 100,000 characters at a time.');
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const rawLine of text.split(/\r?\n/)) {
+    const value = rawLine.replace(/^\s*(?:[-*•▪◦·]|\d+[.)])\s+/, '').replace(/\s+/g, ' ').trim();
+    const key = value.toLowerCase();
+    if (value.length < 3 || value.length > 4000 || seen.has(key)) continue;
+    seen.add(key);
+    lines.push(value);
+  }
+  if (lines.length > 300) throw new Error('Paste at most 300 lines at a time.');
+  return lines;
 }

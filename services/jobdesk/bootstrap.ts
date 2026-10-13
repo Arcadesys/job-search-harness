@@ -1,5 +1,3 @@
-import { seedResumeTruth } from '../../lib/resume-truth';
-import { initializeSearchQueries } from '../../lib/job-discovery';
 import type { Sql } from '../../lib/job-storage';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -32,8 +30,6 @@ export async function privateBootstrap(root: string): Promise<UserReport[]> {
 }
 
 export async function bootstrap(sql: Sql, reports: UserReport[] = []) {
-  await seedResumeTruth(sql);
-  await initializeSearchQueries(sql);
   const input = JSON.stringify(reportsSchema.parse(reports));
   await sql`WITH incoming AS (SELECT * FROM jsonb_to_recordset(${input}::jsonb)
     AS x(id text,organization text,"externalJobId" text,state text,"reportedOn" date,"sourceNote" text))

@@ -157,7 +157,7 @@ export function createProtocolHandler({ request = createJobHuntApiClient() } = {
       return reply({
         protocolVersion: versions.includes(requested) ? requested : versions[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'job-hunt-jobs', version: '0.2.0-local' },
+        serverInfo: { name: 'job-search-harness', version: '0.3.0' },
       });
     }
     if (message.method === 'tools/list')

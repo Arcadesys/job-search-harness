@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Sql } from './job-storage';
-import { centralDate, getReviewWeeks, JOB_REVIEW_TIME_ZONE, listWeeklyReview, markReviewWeekComplete, recordReviewEvent, recordSiteOutcome, removeSiteOutcome } from './jobs-review';
+import { localDate, getReviewWeeks, listWeeklyReview, markReviewWeekComplete, recordReviewEvent, recordSiteOutcome, removeSiteOutcome } from './jobs-review';
 
 type FakeSql = Sql;
 function tagged(fn: (text: string, values: unknown[]) => Promise<unknown[]>): FakeSql {
   return (async (strings: TemplateStringsArray, ...values: unknown[]) => fn(strings.join(' ? '), values)) as FakeSql;
 }
 
-test('weekly window uses Central date and Monday through Sunday periods', () => {
-  assert.equal(JOB_REVIEW_TIME_ZONE, 'America/Chicago');
-  assert.equal(centralDate(new Date('2026-09-25T05:30:00Z')), '2026-09-25');
-  assert.equal(centralDate(new Date('2026-09-25T04:30:00Z')), '2026-09-24');
+test('weekly window uses the configured local date and Monday through Sunday periods', () => {
+  assert.equal(localDate(new Date('2026-09-25T05:30:00Z'), 'America/Chicago'), '2026-09-25');
+  assert.equal(localDate(new Date('2026-09-25T04:30:00Z'), 'America/Chicago'), '2026-09-24');
+  assert.equal(localDate(new Date('2026-09-25T04:30:00Z'), 'Europe/Berlin'), '2026-09-25');
+  assert.equal(localDate(new Date('2026-09-25T13:30:00Z'), 'Pacific/Auckland'), '2026-09-26');
   assert.deepEqual(getReviewWeeks('2026-09-25', 3), ['2026-09-07', '2026-09-14', '2026-09-21']);
   assert.throws(() => getReviewWeeks('2026-99-99'), /Invalid review window/);
 });
@@ -19,8 +20,10 @@ test('weekly window uses Central date and Monday through Sunday periods', () => 
 test('weekly counts use dated lead records and explicit outcome events with review completeness', async () => {
   let statement = '';
   let payload = '';
-  const fake = tagged(async (text, values) => { statement = text; payload = String(values[0]); return []; });
-  await listWeeklyReview(['2026-09-14', '2026-09-21'], fake);
+  let zones: unknown[] = [];
+  const fake = tagged(async (text, values) => { statement = text; payload = String(values[0]); zones = values.slice(1); return []; });
+  await listWeeklyReview(['2026-09-14', '2026-09-21'], fake, 'Asia/Tokyo');
+  assert.deepEqual(zones, ['Asia/Tokyo', 'Asia/Tokyo'], 'both timestamp groupings use the configured zone');
   assert.deepEqual(JSON.parse(payload).map((week: { week_start: string }) => week.week_start), ['2026-09-14', '2026-09-21']);
   assert.match(statement, /date_trunc\('week', discovered_at AT TIME ZONE\s+\?/);
   assert.match(statement, /count\(\*\) FILTER \(WHERE event_type='reply'\)/);

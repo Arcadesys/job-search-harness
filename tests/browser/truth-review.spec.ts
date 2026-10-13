@@ -1,16 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
-const title = 'Senior Scrum Master & Agile Coach';
-const dates = '06/2020 – 08/2023';
-const planning = 'Slashed planning time by 50% for quarterly planning for 50+ engineers';
+const title = 'Senior Program Manager & Agile Coach';
+const dates = '06/2019 – 08/2022';
+const planning = 'Cut quarterly planning time by 50% for more than 60 engineers by replacing ad hoc sessions with a shared template';
 const row = (page: Page, id: string) => page.locator(`[data-truth-id="${id}"]`);
-async function arity(page: Page) {
+async function northwind(page: Page) {
   await page.getByRole('button', { name: 'Work experience', exact: true }).click();
   await page.getByText('Choose role or filter', { exact: true }).click();
   await page.getByRole('combobox', { name: 'Role', exact: true }).selectOption('experience.3');
   await page.getByText('Choose role or filter', { exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Arity — Chicago, IL', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Northwind Logistics — Denver, CO', exact: true })).toBeVisible();
 }
 async function noOverflow(page: Page) {
   const overflow = await page.evaluate(() => ({ width: innerWidth, document: document.documentElement.scrollWidth, elements: [...document.querySelectorAll('body *')].filter((element) => element.getBoundingClientRect().right > innerWidth + 1).slice(0, 8).map((element) => ({ tag: element.tagName, class: element.className, width: element.getBoundingClientRect().width })) }));
@@ -22,7 +22,7 @@ test.beforeEach(async ({ page, request }) => {
 });
 
 test('batch selection, undo, version history and database restart persistence', async ({ page, request }) => {
-  await arity(page);
+  await northwind(page);
   await expect(page.getByRole('button', { name: 'Approve 0 selected' })).toBeDisabled();
   await page.getByRole('checkbox', { name: title, exact: true }).check();
   await page.getByRole('checkbox', { name: dates, exact: true }).check();
@@ -40,12 +40,12 @@ test('batch selection, undo, version history and database restart persistence', 
   await page.getByRole('checkbox', { name: title, exact: true }).check();
   await page.getByRole('button', { name: 'Approve 1 selected' }).click();
   await expect(page.getByRole('status')).toContainText('1 truth approved');
-  await request.post('/__test/restart'); await page.reload(); await arity(page);
+  await request.post('/__test/restart'); await page.reload(); await northwind(page);
   await expect(row(page, 'experience.3.title').getByText('Reviewed', { exact: true })).toBeVisible();
 });
 
 test('related copies require independent selection and filters limit select-all', async ({ page }) => {
-  await arity(page);
+  await northwind(page);
   await page.getByRole('checkbox', { name: 'Select all 5 visible unreviewed facts' }).check();
   await expect(page.getByRole('button', { name: 'Approve 5 selected' })).toBeEnabled();
   await page.getByRole('checkbox', { name: 'Select all 5 visible unreviewed facts' }).uncheck();
@@ -56,13 +56,13 @@ test('related copies require independent selection and filters limit select-all'
   await expect(page.getByRole('status')).toContainText('1 truth approved');
   await expect(page.getByRole('checkbox', { name: planning, exact: true })).not.toBeChecked();
   await page.getByText('Choose role or filter', { exact: true }).click();
-  await page.getByLabel('Search this group').fill('06/2020');
+  await page.getByLabel('Search this group').fill('06/2019');
   await page.getByRole('checkbox', { name: 'Select all 1 visible unreviewed facts' }).check();
   await expect(page.getByRole('button', { name: 'Approve 1 selected' })).toBeEnabled();
 });
 
 test('inline editing, rejection, renewed approval and unsaved navigation guard', async ({ page }) => {
-  await arity(page);
+  await northwind(page);
   await row(page, 'experience.3.title').getByRole('button', { name: /^Edit:/ }).click();
   await expect(page.getByRole('textbox', { name: 'Claim', exact: true })).toBeFocused();
   await page.getByRole('textbox', { name: 'Claim', exact: true }).fill('Corrected role title');
@@ -81,7 +81,7 @@ test('inline editing, rejection, renewed approval and unsaved navigation guard',
 });
 
 test('stale batches save nothing and preserve selection; refresh exposes current facts', async ({ page, request }) => {
-  await arity(page);
+  await northwind(page);
   await page.getByRole('checkbox', { name: title, exact: true }).check();
   await page.getByRole('checkbox', { name: dates, exact: true }).check();
   const { claims } = await (await request.get('/api/jobs/resume-truth')).json();
@@ -99,7 +99,7 @@ test('stale batches save nothing and preserve selection; refresh exposes current
 });
 
 test('failed saves retain the inline draft and offer retry', async ({ page }) => {
-  await arity(page); await row(page, 'experience.3.title').getByRole('button', { name: /^Edit:/ }).click();
+  await northwind(page); await row(page, 'experience.3.title').getByRole('button', { name: /^Edit:/ }).click();
   await page.getByRole('textbox', { name: 'Claim', exact: true }).fill('Retained draft');
   await page.route('**/api/jobs/resume-truth', async (route) => {
     if (route.request().method() === 'POST') await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Temporary save failure' }) }); else await route.continue();
@@ -113,7 +113,7 @@ test('failed saves retain the inline draft and offer retry', async ({ page }) =>
 });
 
 test('keyboard access, contrast, target sizes, native screenshot and 200% reflow', async ({ page }, testInfo) => {
-  await arity(page); await noOverflow(page);
+  await northwind(page); await noOverflow(page);
   await page.getByRole('checkbox', { name: title, exact: true }).focus();
   await page.keyboard.press('Space');
   await expect(page.getByRole('checkbox', { name: title, exact: true })).toBeChecked();
@@ -132,12 +132,12 @@ test('keyboard access, contrast, target sizes, native screenshot and 200% reflow
   await page.getByRole('button', { name: 'Undo last approval' }).focus(); await page.keyboard.press('Enter');
   await expect(page.getByRole('status')).toContainText('Approval undone');
   await page.getByRole('button', { name: 'Next role' }).focus(); await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'WorkTango — Chicago, IL', exact: true })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Brightline Health — Remote', exact: true })).toBeFocused();
 });
 
 
 test('tab order reaches selection, editing, comparison and approval without pointer input', async ({ page }) => {
-  await arity(page);
+  await northwind(page);
   const reach = async (target: ReturnType<Page['getByRole']>) => {
     for (let index = 0; index < 60; index++) {
       await page.keyboard.press('Tab');

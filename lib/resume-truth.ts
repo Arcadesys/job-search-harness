@@ -1,6 +1,5 @@
 import type { Sql } from './job-storage';
-import { projectTruthSchema, reviewBatchSchema, type ProjectTruthInput, type TruthChange, type ReviewClaim } from './resume-truth-review';
-import truthSeeds from './resume-truth-seeds.json';
+import { pastedResumeLines, projectTruthSchema, resumeImportClaims, reviewBatchSchema, type ProjectTruthInput, type ResumeImport, type TruthChange, type ReviewClaim } from './resume-truth-review';
 
 export type TruthClaim = {
   id: string;
@@ -14,22 +13,13 @@ export type TruthClaim = {
 export type TruthVersion = TruthClaim & { createdAt: string };
 
 
-/**
- * Every seed starts as unreviewed. The seeds are a frozen snapshot of the
- * work.thearcades.me résumé exports at the time this harness was split out;
- * their positional IDs and wording must not change, because stored claims key
- * off them.
- */
-export function baselineResumeClaims(): TruthClaim[] {
-  return (truthSeeds as TruthClaim[]).map((claim) => ({ ...claim }));
-}
-
-export async function seedResumeTruth(sql: Sql): Promise<void> {
-  const claims = baselineResumeClaims();
+/** Insert-only: never changes an existing claim, its approval or its history. */
+export async function insertNewTruths(claims: TruthClaim[], sql: Sql): Promise<number> {
+  if (!claims.length) return 0;
   const payload = JSON.stringify(claims.map((claim) => ({
-    id: claim.id, claim: claim.claim, source_note: claim.sourceNote, review_status: claim.reviewStatus,
+    id: claim.id, claim: claim.claim, source_note: claim.sourceNote, review_status: 'unreviewed',
   })));
-  await sql`
+  const rows = await sql`
     WITH incoming AS (
       SELECT * FROM jsonb_to_recordset(${payload}::jsonb)
         AS x(id text, claim text, source_note text, review_status text)
@@ -38,14 +28,37 @@ export async function seedResumeTruth(sql: Sql): Promise<void> {
       SELECT id, claim, source_note, review_status FROM incoming
       ON CONFLICT (id) DO NOTHING
       RETURNING id, claim, source_note, review_status
-    )
-    INSERT INTO resume_truth_versions (claim_id, claim, source_note, review_status)
-    SELECT id, claim, source_note, review_status FROM inserted
-  `;
+    ), history AS (
+      INSERT INTO resume_truth_versions (claim_id, claim, source_note, review_status)
+      SELECT id, claim, source_note, review_status FROM inserted RETURNING claim_id
+    ) SELECT count(*)::int AS count FROM history`;
+  return Number(rows[0]?.count ?? 0);
+}
+
+/** First-run import of a structured résumé. Later additions go through
+ * importResumeText or addProjectTruth, which never renumber existing claims. */
+export async function importResume(input: ResumeImport, sql: Sql): Promise<{ imported: number }> {
+  const claims = resumeImportClaims(input);
+  if (!claims.length) throw new Error('The résumé contained no claims to import.');
+  const existing = await sql`SELECT 1 FROM resume_truth_claims LIMIT 1`;
+  if (existing.length) throw new Error('Your truth bank already has claims. Add new ones by pasting text or editing; nothing was imported.');
+  return { imported: await insertNewTruths(claims, sql) };
+}
+
+const normalized = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+export async function importResumeText(text: string, sourceNote: string, sql: Sql): Promise<{ imported: number; skipped: number }> {
+  const note = sourceNote.trim();
+  if (note.length < 8 || note.length > 1000) throw new Error('Add a source note saying where this text came from.');
+  const lines = pastedResumeLines(text);
+  const rows = await sql`SELECT id, claim FROM resume_truth_claims`;
+  const known = new Set(rows.map((row) => normalized(String(row.claim))));
+  let next = Math.max(0, ...rows.map((row) => Number(/^other\.(\d+)$/.exec(String(row.id))?.[1] ?? 0))) + 1;
+  const fresh = lines.filter((line) => !known.has(normalized(line)));
+  const claims = fresh.map((claim) => ({ id: `other.${next++}`, claim, sourceNote: note, reviewStatus: 'unreviewed' as const }));
+  return { imported: await insertNewTruths(claims, sql), skipped: lines.length - fresh.length };
 }
 
 export async function listResumeTruth(sql: Sql): Promise<ReviewClaim[]> {
-  await seedResumeTruth(sql);
   const rows = await sql`SELECT id, claim, source_note AS "sourceNote", review_status AS "reviewStatus", updated_at AS "updatedAt", updated_at::text AS version FROM resume_truth_claims ORDER BY id`;
   return rows as ReviewClaim[];
 }

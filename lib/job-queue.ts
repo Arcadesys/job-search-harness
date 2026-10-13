@@ -103,7 +103,7 @@ export async function updateApplicationBatchItem(ownerId: string, itemId: string
 
 export async function recordApplicationReceipt(ownerId: string, itemId: string, input: {
   idempotencyKey: string; confirmation: string; confirmationUrl?: string;
-}, sql: Sql) {
+}, sql: Sql, timeZone: string) {
   const idempotencyKey = input.idempotencyKey.trim();
   const confirmation = input.confirmation.trim();
   const confirmationUrl = input.confirmationUrl?.trim() ?? '';
@@ -131,7 +131,7 @@ export async function recordApplicationReceipt(ownerId: string, itemId: string, 
       SELECT * FROM saved UNION ALL SELECT * FROM existing
     ), event AS (
       INSERT INTO job_review_events (lead_id,event_type,occurred_on,note)
-      SELECT owned.lead_id,'application',(chosen.confirmed_at AT TIME ZONE 'America/Chicago')::date,
+      SELECT owned.lead_id,'application',(chosen.confirmed_at AT TIME ZONE ${timeZone})::date,
         'Browser confirmation recorded by the local job-hunt workflow.'
       FROM owned JOIN chosen ON chosen.item_id=owned.id
       JOIN saved ON saved.item_id=owned.id

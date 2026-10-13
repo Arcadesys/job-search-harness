@@ -8,6 +8,9 @@ import { handleTruthReview } from '../../lib/resume-truth-http';
 import { JobdeskStore, DEFAULT_ROOT } from './store';
 import { createService, initializeService } from './service';
 import { JobdeskError } from './errors';
+import { brokerEndpoint } from './paths.mjs';
+
+const windows = process.platform === 'win32';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const PRIVATE_HEADERS = {
@@ -49,7 +52,8 @@ function close(server: Server) {
 export async function startJobdesk({
   root = DEFAULT_ROOT,
   port = 0,
-}: { root?: string; port?: number } = {}) {
+  onShutdownRequest,
+}: { root?: string; port?: number; onShutdownRequest?: () => void } = {}) {
   const store = await JobdeskStore.open(root);
   let ipc: Server | undefined;
   let web: Server | undefined;
@@ -58,10 +62,11 @@ export async function startJobdesk({
     const service = createService(store);
     const sessions = new Map<string, { csrf: string; expires: number }>();
     const tickets = new Map<string, number>();
-    const socketPath = path.join(store.root, 'broker.sock');
+    const socketPath = brokerEndpoint(store.root);
     // Only the sole database owner can replace its own stale socket, after the
-    // database lock has been acquired. It is never a remote listener.
-    await rm(socketPath, { force: true });
+    // database lock has been acquired. It is never a remote listener. Windows
+    // named pipes vanish with their process, so there is nothing to remove.
+    if (!windows) await rm(socketPath, { force: true });
     const built = await build({
       entryPoints: [fileURLToPath(new URL('./ui.tsx', import.meta.url))],
       bundle: true,
@@ -202,6 +207,7 @@ export async function startJobdesk({
           const input = await body(req);
           if (
             input.method === 'browser.open' ||
+            input.method === 'owner.shutdown' ||
             input.method === 'submission.begin' ||
             input.method === 'submission.record' ||
             input.method === 'items.claim' ||
@@ -259,6 +265,12 @@ export async function startJobdesk({
       }
       try {
         const input = await body(req);
+        if (input.method === 'owner.shutdown') {
+          if (!onShutdownRequest) throw new Error('This owner was not started for detached shutdown.');
+          json(res, 200, { data: { ok: true } });
+          setImmediate(onShutdownRequest);
+          return;
+        }
         if (input.method === 'browser.open') {
           if (!Array.isArray(input.args) || input.args.length)
             throw new Error('Invalid launch arguments.');
@@ -278,7 +290,7 @@ export async function startJobdesk({
       }
     });
     await listen(ipc, socketPath);
-    await chmod(socketPath, 0o600);
+    if (!windows) await chmod(socketPath, 0o600);
     return {
       store,
       origin,
@@ -288,7 +300,7 @@ export async function startJobdesk({
         await close(ipc!);
         await close(web!);
         await store.close();
-        await rm(socketPath, { force: true });
+        if (!windows) await rm(socketPath, { force: true });
       },
     };
   } catch (error) {
@@ -300,13 +312,6 @@ export async function startJobdesk({
 }
 
 async function main() {
-  const runtime = await startJobdesk({
-    root: process.env.JOBDESK_DATA_DIR ?? DEFAULT_ROOT,
-    port: Number(process.env.JOBDESK_PORT ?? '4317'),
-  });
-  console.log(
-    `Local Jobdesk ready at ${runtime.origin}. Run npm run jobs:cli -- open for a private session.`,
-  );
   let closing = false;
   const shutdown = async () => {
     if (closing) return;
@@ -314,6 +319,15 @@ async function main() {
     await runtime.close();
     process.exit(0);
   };
+  // The owner answers shutdown only after startJobdesk resolves, so runtime is set.
+  const runtime = await startJobdesk({
+    root: process.env.JOBDESK_DATA_DIR ?? DEFAULT_ROOT,
+    port: Number(process.env.JOBDESK_PORT ?? '4317'),
+    onShutdownRequest: () => void shutdown(),
+  });
+  console.log(
+    `Local Jobdesk ready at ${runtime.origin}. Run npm run jobs:cli -- open for a private session.`,
+  );
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 }

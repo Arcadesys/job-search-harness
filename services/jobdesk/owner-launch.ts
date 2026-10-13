@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as pause } from 'node:timers/promises';
 import { DEFAULT_ROOT, privateRoot } from './store';
+import { brokerEndpoint } from './paths.mjs';
 
 const digest = (text: string) => createHash('sha256').update(text).digest('hex');
 const recordName = 'owner-process.json';
@@ -31,9 +32,9 @@ function alive(pid: number) {
   }
 }
 
-async function healthy(root: string) {
+function ipc(root: string, method: string) {
   return new Promise<boolean>((resolve) => {
-    const req = request({ socketPath: path.join(root, 'broker.sock'), path: '/rpc',
+    const req = request({ socketPath: brokerEndpoint(root), path: '/rpc',
       method: 'POST', headers: { Host: 'jobdesk', 'Content-Type': 'application/json' } }, (res) => {
       let body = '';
       res.on('data', (chunk) => {
@@ -47,9 +48,10 @@ async function healthy(root: string) {
     });
     req.setTimeout(1500, () => req.destroy());
     req.on('error', () => resolve(false));
-    req.end(JSON.stringify({ method: 'health', args: [] }));
+    req.end(JSON.stringify({ method, args: [] }));
   });
 }
+const healthy = (root: string) => ipc(root, 'health');
 
 export async function startDetachedOwner(directory = process.env.JOBDESK_DATA_DIR ?? DEFAULT_ROOT) {
   const root = await privateRoot(directory);
@@ -69,13 +71,13 @@ export async function startDetachedOwner(directory = process.env.JOBDESK_DATA_DI
   let child: ReturnType<typeof spawn>;
   try {
     const info = await log.stat();
-    if (info.uid !== process.getuid?.() || info.mode & 0o077)
+    if (process.platform !== 'win32' && (info.uid !== process.getuid?.() || info.mode & 0o077))
       throw new Error('Owner log must be private and owned by the current user.');
     child = spawn(process.execPath,
       ['--import', 'tsx', fileURLToPath(new URL('./server.ts', import.meta.url))], {
         cwd: fileURLToPath(new URL('../../', import.meta.url)),
         env: { ...process.env, JOBDESK_DATA_DIR: root },
-        detached: true, stdio: ['ignore', log.fd, log.fd],
+        detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd],
       });
   } finally { await log.close(); }
   let failed = false;
@@ -108,7 +110,9 @@ export async function stopDetachedOwner(directory = process.env.JOBDESK_DATA_DIR
     throw new Error('Owner is unavailable. Use documented recovery and reconcile submissions.');
   // Recheck the exact lock immediately before signalling the verified owner.
   if ((await owner(root))?.hash !== current.hash) throw new Error('Owner lock changed.');
-  process.kill(current.pid, 'SIGTERM');
+  // Ask the owner to close its database and lock itself. A signal would kill a
+  // Windows process outright and leave a stale lock behind.
+  if (!await ipc(root, 'owner.shutdown')) throw new Error('Owner refused shutdown. Do not recover a live lock.');
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     if (!await owner(root)) {

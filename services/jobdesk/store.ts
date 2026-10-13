@@ -12,27 +12,31 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { parameterizedSql, type Sql } from '../../lib/job-storage';
 import { migrate, MIGRATIONS } from './migrate';
+import { defaultDataRoot } from './paths.mjs';
 
 export const PGLITE_VERSION = '0.5.8';
-export const DEFAULT_ROOT = path.join(homedir(), 'Library/Application Support/Arcades Jobdesk');
+export const DEFAULT_ROOT = defaultDataRoot();
+const SYNCED = /[\\/](?:Mobile Documents|CloudStorage|Dropbox|OneDrive[^\\/]*|Google Drive|iCloudDrive)(?:[\\/]|$)/i;
+/** Cloud-synced folders would copy a live database between machines. */
+export const inSyncedFolder = (candidate: string) => SYNCED.test(candidate);
 
-export async function privateRoot(directory: string) {
+export async function privateRoot(directory: string, platform = process.platform) {
   let root = path.resolve(directory);
-  if (/\/(?:Mobile Documents|CloudStorage|Dropbox|OneDrive)(?:\/|$)/i.test(root))
+  if (inSyncedFolder(root))
     throw new Error('Jobdesk state must be outside synced folders.');
   await mkdir(root, { recursive: true, mode: 0o700 });
   if ((await lstat(root)).isSymbolicLink())
     throw new Error('Jobdesk state must not use a symlinked root.');
   root = await realpath(root);
-  if (/\/(?:Mobile Documents|CloudStorage|Dropbox|OneDrive)(?:\/|$)/i.test(root))
+  if (inSyncedFolder(root))
     throw new Error('Jobdesk state must be outside synced folders.');
+  // Windows has no POSIX modes; the per-user LOCALAPPDATA profile provides the boundary.
   const info = await stat(root);
-  if (info.uid !== process.getuid?.() || info.mode & 0o077)
+  if (platform !== 'win32' && (info.uid !== process.getuid?.() || info.mode & 0o077))
     throw new Error('Jobdesk root must be owned by the current user with permissions 0700.');
   for (let ancestor = root; ; ancestor = path.dirname(ancestor)) {
     try {

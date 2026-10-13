@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { request } from 'node:http';
+import { tempRoot } from '../fixtures/temp-root';
 
 async function launchSession(socketPath: string) {
   return new Promise<{ url: string }>((resolve, reject) => {
@@ -32,7 +33,7 @@ async function launchSession(socketPath: string) {
 test('local session, truthful approval, cancel/retry, lead review and large-text keyboard use', async ({
   page,
 }, info) => {
-  const root = await mkdtemp('/tmp/jobdesk-browser-');
+  const root = await tempRoot('jobdesk-browser-');
   const processHandle = spawn(
     process.execPath,
     ['--import', 'tsx', 'tests/fixtures/jobdesk-server.ts'],

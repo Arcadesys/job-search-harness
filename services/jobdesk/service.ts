@@ -222,8 +222,8 @@ export function createService(store: JobdeskStore) {
       schemas.backup.parse(args);
       return store.backup();
     }
-    if (method === 'browser.open')
-      throw new Error('Browser launch requires the foreground server.');
+    if (method === 'browser.open' || method === 'owner.shutdown')
+      throw new Error('This operation requires the owner process connection.');
     const handler = operations[method];
     return store.run((sql) =>
       ['truth.addProject', 'truth.reconcileHosted', 'submission.record', 'draft.edit', 'draft.saveManual', 'draft.approve', 'submission.begin', 'submission.notSubmitted'].includes(method)

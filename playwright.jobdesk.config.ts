@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os';
 import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 export default defineConfig({
@@ -5,7 +6,7 @@ export default defineConfig({
   testMatch: 'local-jobdesk.spec.ts',
   workers: 1,
   fullyParallel: false,
-  outputDir: path.join('/tmp', 'work-local-jobdesk-browser'),
+  outputDir: path.join(process.platform === 'win32' ? tmpdir() : '/tmp', 'job-search-harness-browser'),
   reporter: 'line',
   use: { browserName: 'chromium', trace: 'off' },
   projects: [

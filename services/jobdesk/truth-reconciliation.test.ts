@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { JobdeskStore } from './store';
 import { createService, initializeService } from './service';
 import { reviewedTruthsForDraft, type ReviewClaim } from '../../lib/resume-truth-review';
 import type { TruthReconciliationInput } from './truth-reconciliation';
+import { tempRoot } from '../../tests/fixtures/temp-root';
 
 async function fixture() {
-  const root = await mkdtemp('/tmp/jobdesk-reconcile-test-');
+  const root = await tempRoot('jobdesk-reconcile-test-');
   const store = await JobdeskStore.open(root);
   await initializeService(store);
   const service = createService(store);
@@ -111,7 +112,7 @@ test('invalid export hash, duplicate IDs and injected review decisions write not
 
 test('history failure rolls back all earlier writes; supported backup restores exact pre-import claims', async () => {
   const f = await fixture();
-  const restoredRoot = await mkdtemp('/tmp/jobdesk-reconcile-restore-');
+  const restoredRoot = await tempRoot('jobdesk-reconcile-restore-');
   let restored: JobdeskStore | undefined;
   try {
     const backup = await f.call({ method: 'backup', args: [] });

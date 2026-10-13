@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { JobdeskStore } from './store';
 import { createService, initializeService } from './service';
 import {
@@ -11,9 +11,10 @@ import {
 } from '../../lib/job-discovery';
 import { assessAndDraft, MONTHLY_AI_BUDGET_USD } from '../../lib/job-drafting';
 import { centralDate, getReviewWeeks, listWeeklyReview } from '../../lib/jobs-review';
+import { tempRoot } from '../../tests/fixtures/temp-root';
 
 test('real SQL budgets, successful scan dedupe, failed/unmeasured provider calls and Chicago daylight saving', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-domain-');
+  const root = await tempRoot('jobdesk-domain-');
   const store = await JobdeskStore.open(root);
   const oldFetch = globalThis.fetch,
     oldKey = process.env.OPENAI_API_KEY;

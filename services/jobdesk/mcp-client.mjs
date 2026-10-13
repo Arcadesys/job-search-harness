@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
-import { homedir } from 'node:os';
-import path from 'node:path';
+import { clientEndpoint } from './paths.mjs';
 
 // Thin IPC consumer: never opens PGlite, accesses Keychain, or falls back online.
 export function localCall(method, args, socketPath) {
@@ -49,8 +48,7 @@ export function localCall(method, args, socketPath) {
 }
 
 export function createLocalApiClient({
-  socketPath = process.env.JOBDESK_SOCKET ??
-    path.join(homedir(), 'Library/Application Support/Arcades Jobdesk/broker.sock'),
+  socketPath = clientEndpoint(),
 } = {}) {
   const workerId = `mcp-${randomUUID()}`;
   const leases = new Map();

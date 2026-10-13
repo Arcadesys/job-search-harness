@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { rm, stat } from 'node:fs/promises';
 import { request } from 'node:http';
 import { startJobdesk } from './server';
 import { brokerCall } from './client';
 import { leadIdForUrl } from '../../lib/job-discovery';
+import { tempRoot, posixModes } from '../../tests/fixtures/temp-root';
 
 function raw(origin: string, headers: Record<string, string>) {
   return new Promise<number>((resolve, reject) => {
@@ -20,7 +21,7 @@ function raw(origin: string, headers: Record<string, string>) {
 
 test('real foreground broker: IPC, local browser session, Host/Origin/CSRF, thin stdio worker and offline failure', async (context) => {
   const started = performance.now();
-  const root = await mkdtemp('/tmp/jobdesk-ipc-');
+  const root = await tempRoot('jobdesk-ipc-');
   const runtime = await startJobdesk({ root });
   try {
     const call = (method: any, args: any[] = []) => brokerCall(method, args, runtime.socketPath);
@@ -29,7 +30,7 @@ test('real foreground broker: IPC, local browser session, Host/Origin/CSRF, thin
     context.diagnostic(
       `Foreground startup ${Math.round(performance.now() - started)} ms; process RSS ${health.memoryMb} MiB (test process, not an idle production benchmark).`,
     );
-    assert.equal((await stat(runtime.socketPath)).mode & 0o777, 0o600);
+    if (posixModes) assert.equal((await stat(runtime.socketPath)).mode & 0o777, 0o600);
     assert.equal((await fetch(`${runtime.origin}/api/jobs/resume-truth`)).status, 401);
     assert.equal(await raw(runtime.origin, { Host: 'evil.test' }), 403);
     assert.equal(
@@ -106,6 +107,15 @@ test('real foreground broker: IPC, local browser session, Host/Origin/CSRF, thin
     });
     assert.equal(saved.status, 200);
     assert.equal((await saved.json()).progress.reviewed, 1);
+    const browserShutdown = await fetch(`${runtime.origin}/api/jobdesk`, {
+      method: 'POST',
+      headers: { Cookie: cookie, Origin: runtime.origin, 'Content-Type': 'application/json', 'X-Jobdesk-CSRF': csrf },
+      body: JSON.stringify({ method: 'owner.shutdown', args: [] }),
+    });
+    assert.equal(browserShutdown.status, 403, 'the browser session cannot stop the owner');
+    // A foreground owner started without a detached-shutdown hook refuses it over IPC too.
+    await assert.rejects(call('owner.shutdown'));
+    assert.equal((await call('health')).ok, true);
     await assert.rejects(call('sql' as any, ['SELECT * FROM job_leads']));
     await assert.rejects(runtime.service({ method: 'sql', args: ['SELECT * FROM job_leads'] }));
     await assert.rejects(call('leads.list', ['unexpected']));

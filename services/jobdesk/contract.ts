@@ -132,6 +132,7 @@ export const methodSchemas = {
   'review.removeOutcome': z.tuple([z.string().regex(/^\d{1,18}$/)]),
   backup: z.tuple([]),
   'browser.open': z.tuple([]),
+  'owner.shutdown': z.tuple([]),
 } as const;
 export type Method = keyof typeof methodSchemas;
 export type Args<M extends Method> = z.infer<(typeof methodSchemas)[M]>;

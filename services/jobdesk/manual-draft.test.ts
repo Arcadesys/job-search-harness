@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { JobdeskStore } from './store';
 import { createService, initializeService } from './service';
 import { leadIdForUrl } from '../../lib/job-discovery';
+import { tempRoot } from '../../tests/fixtures/temp-root';
 
 test('manual materials persist without a provider call and retain approval, truth and duplicate guards', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-manual-');
+  const root = await tempRoot('jobdesk-manual-');
   const store = await JobdeskStore.open(root);
   const oldFetch = globalThis.fetch;
   let requests = 0;

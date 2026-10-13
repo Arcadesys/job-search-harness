@@ -1,9 +1,6 @@
 import { hostedJobSql, type Sql } from './job-storage';
 import { reviewBatchSchema, type TruthChange, type ReviewClaim } from './resume-truth-review';
-import {
-  RESUME_ACCOMPLISHMENTS, RESUME_COMMUNITY, RESUME_EARLIER, RESUME_EDUCATION,
-  RESUME_EXPERIENCE, RESUME_PROFILE, RESUME_SKILLS, RESUME_SUMMARY,
-} from '@/lib/resume';
+import truthSeeds from './resume-truth-seeds.json';
 
 export type TruthClaim = {
   id: string;
@@ -18,26 +15,14 @@ export type TruthVersion = TruthClaim & { createdAt: string };
 
 const getSql = hostedJobSql;
 
-/** Every seed starts as unreviewed, with a file and export/property source note. */
+/**
+ * Every seed starts as unreviewed. The seeds are a frozen snapshot of the
+ * work.thearcades.me résumé exports at the time this harness was split out;
+ * their positional IDs and wording must not change, because stored claims key
+ * off them.
+ */
 export function baselineResumeClaims(): TruthClaim[] {
-  const claims: TruthClaim[] = [];
-  const add = (id: string, claim: string, source: string) => claims.push({
-    id, claim, sourceNote: `Seeded from lib/resume.ts (${source}); verify before reuse.`, reviewStatus: 'unreviewed',
-  });
-  for (const [key, value] of Object.entries(RESUME_PROFILE)) add(`profile.${key}`, value, `RESUME_PROFILE.${key}`);
-  add('summary', RESUME_SUMMARY, 'RESUME_SUMMARY');
-  RESUME_ACCOMPLISHMENTS.forEach(({ text }, index) => add(`accomplishment.${index + 1}`, text, `RESUME_ACCOMPLISHMENTS[${index}]`));
-  RESUME_EXPERIENCE.forEach((role, index) => {
-    add(`experience.${index + 1}.employer`, `${role.company} — ${role.location}`, `RESUME_EXPERIENCE[${index}]`);
-    add(`experience.${index + 1}.title`, role.title, `RESUME_EXPERIENCE[${index}].title`);
-    add(`experience.${index + 1}.dates`, role.dates, `RESUME_EXPERIENCE[${index}].dates`);
-    role.bullets.forEach((bullet, bulletIndex) => add(`experience.${index + 1}.claim.${bulletIndex + 1}`, bullet, `RESUME_EXPERIENCE[${index}].bullets[${bulletIndex}]`));
-  });
-  RESUME_EARLIER.forEach((role, index) => add(`earlier.${index + 1}`, `${role.org} — ${role.role} (${role.dates})`, `RESUME_EARLIER[${index}]`));
-  RESUME_SKILLS.forEach((group, index) => add(`skills.${index + 1}`, `${group.label}: ${group.skills}`, `RESUME_SKILLS[${index}]`));
-  RESUME_EDUCATION.forEach((item, index) => add(`education.${index + 1}`, item, `RESUME_EDUCATION[${index}]`));
-  add('community', `${RESUME_COMMUNITY.organization} — ${RESUME_COMMUNITY.title}. ${RESUME_COMMUNITY.description}`, 'RESUME_COMMUNITY');
-  return claims;
+  return (truthSeeds as TruthClaim[]).map((claim) => ({ ...claim }));
 }
 
 export async function seedResumeTruth(sql: Sql = getSql()): Promise<void> {

@@ -4,7 +4,6 @@ import test from 'node:test';
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { canAccessJobs, configuredGithubAccountIds, privateJobsPath } from './jobs-access';
 import { baselineResumeClaims, saveResumeTruth, seedResumeTruth } from './resume-truth';
-import { isPrivateAnalyticsPath, outgoingEvent, safePath } from './analytics-policy';
 
 test('jobs access requires a numeric GitHub account ID in the configured allowlist', () => {
   const allowlist = configuredGithubAccountIds(' 172521150, invalid,0042,, ');
@@ -20,7 +19,6 @@ test('private jobs paths include nested pages and APIs', () => {
   assert.equal(privateJobsPath('/jobs/applications'), true);
   assert.equal(privateJobsPath('/api/jobs/resume-truth'), true);
   assert.equal(privateJobsPath('/resume'), false);
-  assert.equal(isPrivateAnalyticsPath('/api/jobs/resume-truth'), true);
 });
 
 test('each private workspace view checks the GitHub account before reading records', async () => {
@@ -61,8 +59,3 @@ test('saving a claim upserts the current value and appends a version atomically'
   assert.match(statement, /INSERT INTO resume_truth_versions[\s\S]*SELECT id, claim, source_note, review_status FROM saved/);
 });
 
-test('analytics path sanitizer and event filter do not expose jobs paths or events', () => {
-  assert.equal(safePath('/jobs'), '/other');
-  assert.equal(safePath('/jobs/applications/private-name'), '/other');
-  assert.equal(outgoingEvent({ event: '$pageview', uuid: 'id', timestamp: new Date(), properties: { pathname: '/jobs/private', token: 'x' } }, 'x'), null);
-});

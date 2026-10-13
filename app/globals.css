@@ -1,0 +1,12 @@
+/* Minimal base; the workspace's own palette and components live in app/jobs/jobs.css. */
+:root {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: var(--font-sans); background: #10131d; color: #f8f9ff; -webkit-font-smoothing: antialiased; }
+img, svg { max-width: 100%; height: auto; }
+button, input, select, textarea { font: inherit; }
+a { color: inherit; }
+:focus-visible { outline: 3px solid #ffcf40; outline-offset: 2px; }

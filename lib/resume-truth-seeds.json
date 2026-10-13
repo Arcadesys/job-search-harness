@@ -1,0 +1,386 @@
+[
+  {
+    "id": "profile.name",
+    "claim": "Austen Tucker-Crowder",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_PROFILE.name); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "profile.titleLine",
+    "claim": "Hands-On AI Builder | Product & Program Leadership",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_PROFILE.titleLine); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "profile.location",
+    "claim": "Chicago, IL",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_PROFILE.location); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "profile.email",
+    "claim": "austen@thearcades.me",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_PROFILE.email); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "profile.site",
+    "claim": "work.thearcades.me",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_PROFILE.site); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "profile.siteUrl",
+    "claim": "https://work.thearcades.me",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_PROFILE.siteUrl); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "profile.github",
+    "claim": "github.com/Arcadesys",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_PROFILE.github); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "profile.githubUrl",
+    "claim": "https://github.com/Arcadesys",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_PROFILE.githubUrl); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "summary",
+    "claim": "I build useful AI systems, backed by 16+ years delivering customer-focused software through program ownership, agile coaching, and hands-on building. AI lets me take more of the work directly from prototype to working system. I bring product judgment, measurable goals, evaluation, and handoff discipline to the things I build.",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_SUMMARY); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "accomplishment.1",
+    "claim": "Helped raise agentic-coding adoption from roughly 2% to 43% of merge requests; it was still climbing at departure",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_ACCOMPLISHMENTS[0]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "accomplishment.2",
+    "claim": "Led Devin adoption with goals and KPIs, including a game used to communicate the operating model",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_ACCOMPLISHMENTS[1]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "accomplishment.3",
+    "claim": "Led a March 2026 roadshow for product managers across three continents, introducing Cursor and agentic AI; attendees began producing prototypes afterward",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_ACCOMPLISHMENTS[2]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "accomplishment.4",
+    "claim": "Built Wavelength, an MCP-enabled operating artifact for tasks, RAID-log items, and program state",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_ACCOMPLISHMENTS[3]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "accomplishment.5",
+    "claim": "Within four days of arrival, facilitated an onsite that multiple attendees called one of their best",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_ACCOMPLISHMENTS[4]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "accomplishment.6",
+    "claim": "Reduced planning time by 50% at Arity via data-driven prioritization for 50+ engineers",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_ACCOMPLISHMENTS[5]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "accomplishment.7",
+    "claim": "Increased feature throughput by 400% at WorkTango during merger-driven agile transformation",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_ACCOMPLISHMENTS[6]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "accomplishment.8",
+    "claim": "Served as product owner for a Guaranteed Rate data-mining tool associated with $1.5B in locked loan volume",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_ACCOMPLISHMENTS[7]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.employer",
+    "claim": "ActiveCampaign — Chicago, IL",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.title",
+    "claim": "Senior Program Owner | AI Enablement & Transformation",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].title); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.dates",
+    "claim": "06/2025–09/2026",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].dates); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.claim.1",
+    "claim": "Led AI enablement and transformation across engineering, product, and leadership, turning adoption goals into measurable, repeatable practice",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].bullets[0]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.claim.2",
+    "claim": "Helped raise agentic-coding adoption from roughly 2% to 43% of merge requests; adoption was still climbing at departure",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].bullets[1]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.claim.3",
+    "claim": "Led Devin adoption with goals and KPIs, using a game to communicate the operating model",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].bullets[2]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.claim.4",
+    "claim": "Led a March 2026 roadshow for product managers across three continents, introducing Cursor and agentic AI; attendees began producing prototypes afterward",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].bullets[3]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.claim.5",
+    "claim": "Built Wavelength, an MCP-enabled operating artifact containing tasks, RAID-log items, and program state",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].bullets[4]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.claim.6",
+    "claim": "Coordinated cross-pillar AI transformation work, including outcomes and north-star metrics that supported ePMO governance and executive review",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].bullets[5]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.claim.7",
+    "claim": "Built Claude skills and Langfuse evaluation prompts that supported daily operations and assessment of AI-agent response quality",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].bullets[6]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.claim.8",
+    "claim": "Designed accessibility-first Cursor and agentic-AI learning experiences that gave participants room to build working prototypes",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].bullets[7]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.claim.9",
+    "claim": "Within four days of arrival, facilitated an onsite that multiple attendees called one of their best",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].bullets[8]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.1.claim.10",
+    "claim": "Created Worksites, intensive problem-solving sessions using board-game prototyping principles, and built operational tools for shared decisions and program visibility",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[0].bullets[9]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.2.employer",
+    "claim": "Allstate — Chicago, IL",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[1]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.2.title",
+    "claim": "Senior Program Manager",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[1].title); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.2.dates",
+    "claim": "08/2023 – 02/2025",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[1].dates); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.2.claim.1",
+    "claim": "Led cross-functional teams to deliver key initiatives across the Allstate Family of Companies",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[1].bullets[0]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.2.claim.2",
+    "claim": "Enhanced decision-making through robust metrics and streamlined project management tools",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[1].bullets[1]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.2.claim.3",
+    "claim": "Championed agile practices and AI adoption by co-designing an AI training curriculum for the product department",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[1].bullets[2]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.3.employer",
+    "claim": "Arity — Chicago, IL",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[2]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.3.title",
+    "claim": "Senior Scrum Master & Agile Coach",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[2].title); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.3.dates",
+    "claim": "06/2020 – 08/2023",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[2].dates); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.3.claim.1",
+    "claim": "Slashed planning time by 50% for quarterly planning for 50+ engineers",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[2].bullets[0]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.3.claim.2",
+    "claim": "Mentored Scrum Masters, enabling three promotions and strengthening agile alignment within the org",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[2].bullets[1]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.4.employer",
+    "claim": "WorkTango — Chicago, IL",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[3]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.4.title",
+    "claim": "Senior Scrum Master & Head of Agile PMO",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[3].title); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.4.dates",
+    "claim": "01/2019 – 06/2020",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[3].dates); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.4.claim.1",
+    "claim": "Spearheaded agile transformation during a merger, boosting feature delivery throughput by 400%",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[3].bullets[0]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.4.claim.2",
+    "claim": "Redesigned workflows to double team velocity",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[3].bullets[1]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.4.claim.3",
+    "claim": "Built a mentorship program within the technology organization to nurture future leaders",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[3].bullets[2]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.5.employer",
+    "claim": "Guaranteed Rate — Chicago, IL",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[4]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.5.title",
+    "claim": "Scrum Master & Project Lead",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[4].title); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.5.dates",
+    "claim": "11/2015 – 12/2018",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[4].dates); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.5.claim.1",
+    "claim": "Rescoped a delayed initiative to deliver an MVP in two months, cutting production time by 75%",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[4].bullets[0]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.5.claim.2",
+    "claim": "Acted as product owner for a data-mining tool associated with $1.5B in locked loan volume",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[4].bullets[1]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "experience.5.claim.3",
+    "claim": "Developed a measurement plan that streamlined app functionality and elevated user engagement",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EXPERIENCE[4].bullets[2]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "earlier.1",
+    "claim": "Chicago Housing Authority — Business Analyst & Scrum Master (2012–2015)",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EARLIER[0]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "earlier.2",
+    "claim": "Technology Partnership Group — Business Analyst (2009–2012)",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EARLIER[1]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "skills.1",
+    "claim": "AI & Automation: Claude Code, Cursor.ai, Langfuse, Glean, Agentic Development, LLM Evaluation, MCP Development, Claude Skills Development",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_SKILLS[0]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "skills.2",
+    "claim": "Facilitation & PM: Jira, Digital.ai, Confluence, Airtable, Trello, Mural, Remote/Hybrid Facilitation, Offshore Coordination",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_SKILLS[1]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "skills.3",
+    "claim": "Development: Next.js, React, Node.js, Python, Express, Bootstrap, Postgres, Amazon Lambdas",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_SKILLS[2]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "skills.4",
+    "claim": "Tracking & Analysis: Google Analytics, Hotjar, Datadog, Grafana, Tableau",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_SKILLS[3]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "skills.5",
+    "claim": "Communication: Video, Audio, and Graphic Production, Training Production, Professional Writing, Accessibility-First Design",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_SKILLS[4]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "skills.6",
+    "claim": "Methodologies: Paper Prototyping, Constructivism, Kolb's Experiential Learning, Think-Pair-Share, MoSCoW, Rose/Thorn/Bud, Spotify Squad Health Check",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_SKILLS[5]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "education.1",
+    "claim": "Wabash College — B.A. in English, Rhetoric, and Teacher Education, 2007",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EDUCATION[0]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "education.2",
+    "claim": "Certified Scrum Master (CSM) — 2011–Present",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_EDUCATION[1]); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  },
+  {
+    "id": "community",
+    "claim": "Midwest FurFest — Operations Volunteer. Staff role at a registered 501(c)(3) running a 15,000-attendee annual conference. Volunteer coordination, on-site operations, and logistics at scale under a hard, immovable deadline.",
+    "sourceNote": "Seeded from lib/resume.ts (RESUME_COMMUNITY); verify before reuse.",
+    "reviewStatus": "unreviewed"
+  }
+]

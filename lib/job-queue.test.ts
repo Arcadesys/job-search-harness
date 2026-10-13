@@ -7,7 +7,6 @@ import {
   listApplicationBatches, listMcpTokens, recordApplicationReceipt, updateApplicationBatchItem, validBatchStatus,
 } from './job-queue';
 import { PRIVATE_API_HEADERS } from './job-mcp-api';
-import { isPrivateAnalyticsPath } from './analytics-policy';
 
 function fakeSql(rows: unknown[] = []) {
   const statements: string[] = [];
@@ -100,13 +99,10 @@ test('MCP routes authenticate independently and expose no application submission
   assert.doesNotMatch(submissionRoute, /fetch\(|submit.*application/i);
 });
 
-test('token responses are private, settings analytics are disabled, and token lists never return credentials', async () => {
+test('token responses are private and token lists never return credentials', async () => {
   assert.equal(PRIVATE_API_HEADERS['Cache-Control'], 'private, no-store, max-age=0');
-  assert.equal(isPrivateAnalyticsPath('/jobs/settings'), true);
   const fake = fakeSql();
   await listMcpTokens('172521150', fake.query);
   assert.match(fake.statements[0], /id,label,expires_at/);
   assert.doesNotMatch(fake.statements[0], /token_hash/);
-  const analytics = await readFile(new URL('./analytics-client.ts', import.meta.url), 'utf8');
-  assert.match(analytics, /autocapture:\s*false/);
 });

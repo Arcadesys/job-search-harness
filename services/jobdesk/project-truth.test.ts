@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { JobdeskStore } from './store';
 import { createService, initializeService } from './service';
+import { tempRoot } from '../../tests/fixtures/temp-root';
+import { loadSample } from '../../tests/fixtures/sample-resume';
 
 test('project creation preserves existing truths, validates input, and records only one unreviewed version', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-project-test-');
+  const root = await tempRoot('jobdesk-project-test-');
   const store = await JobdeskStore.open(root);
   try {
     await initializeService(store);
+    await loadSample(store);
     const service = createService(store);
     const call = (request: Parameters<typeof service>[0]) => service(request) as Promise<any>;
     const before = await call({ method: 'truth.list', args: [] });
@@ -49,10 +52,11 @@ test('project creation preserves existing truths, validates input, and records o
 });
 
 test('failed project history insertion rolls back the truth insertion', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-project-rollback-');
+  const root = await tempRoot('jobdesk-project-rollback-');
   const store = await JobdeskStore.open(root);
   try {
     await initializeService(store);
+    await loadSample(store);
     const service = createService(store);
     const call = (request: Parameters<typeof service>[0]) => service(request) as Promise<any>;
     const before = await call({ method: 'truth.list', args: [] });

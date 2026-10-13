@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { startJobdesk } from './server';
 import { brokerCall } from './client';
 import { leadIdForUrl } from '../../lib/job-discovery';
+import { tempRoot } from '../../tests/fixtures/temp-root';
+import { sampleResume } from '../../tests/fixtures/sample-resume';
 
 test('submission binds the worker-read draft; stale forms fail and receipts preserve the attempt snapshot', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-submission-');
+  const root = await tempRoot('jobdesk-submission-');
   const runtime = await startJobdesk({ root });
+  await runtime.service({ method: 'truth.importResume', args: [sampleResume] });
   let stopped = false;
   const call = (method: any, args: any[] = []) => runtime.service({ method, args }) as Promise<any>;
   const sql = runtime.store.sql;

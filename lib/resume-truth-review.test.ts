@@ -6,10 +6,11 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { sqlAdapter } from '../tests/fixtures/truth-database';
 import { handleTruthReview } from './resume-truth-http';
-import { baselineResumeClaims, listResumeTruth, listResumeTruthVersions, reviewResumeTruth, saveResumeTruth, seedResumeTruth } from './resume-truth';
+import { listResumeTruth, listResumeTruthVersions, reviewResumeTruth, saveResumeTruth, insertNewTruths } from './resume-truth';
 import { reviewedTruthsForDraft, editedStatus, groupTruths, relatedTruthPairs, reviewBatchSchema, type ReviewClaim } from './resume-truth-review';
+import { sampleClaims } from '../tests/fixtures/sample-resume';
 
-const fixture = (): ReviewClaim[] => baselineResumeClaims().map((c) => ({ ...c, version: 'v1' }));
+const fixture = (): ReviewClaim[] => sampleClaims().map((c) => ({ ...c, version: 'v1' }));
 
 test('every imported fact is grouped once; role basics and related achievements stay together', () => {
   const claims = fixture(); const groups = groupTruths(claims);
@@ -20,10 +21,10 @@ test('every imported fact is grouped once; role basics and related achievements 
   assert.equal(groups[0].section, 'Personal details');
 });
 
-test('related wording uses guarded known relationships, not positional bullet IDs', () => {
+test('related wording pairs an accomplishment with the one bullet it clearly restates', () => {
   const claims = fixture();
   assert.equal(relatedTruthPairs(claims).size, 8);
-  const adoption = claims.find((c) => c.claim.includes('adoption was still climbing'))!;
+  const adoption = claims.find((c) => c.id.includes('.claim.') && c.claim.includes('adoption was still climbing'))!;
   const summary = claims.find((c) => c.id === 'accomplishment.1')!;
   assert.equal(relatedTruthPairs(claims).get(adoption.id), summary.id);
   summary.claim = 'Codex';
@@ -48,7 +49,7 @@ test('real SQL: exact batches, stale and missing records, independent copies, un
   let db = new PGlite(directory);
   try {
     await db.exec(await readFile(new URL('../db/migrations/0001_resume_truth.sql', import.meta.url), 'utf8'));
-    let sql = sqlAdapter(db); await seedResumeTruth(sql);
+    let sql = sqlAdapter(db); await insertNewTruths(sampleClaims(), sql);
     const initial = await listResumeTruth(sql);
     const chosen = ['experience.3.title', 'experience.3.dates'];
     const changes = initial.filter((c) => chosen.includes(c.id)).map((c) => ({ id: c.id, expectedVersion: c.version, reviewStatus: 'reviewed' as const }));

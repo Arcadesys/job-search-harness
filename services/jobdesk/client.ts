@@ -1,12 +1,11 @@
 import { request } from 'node:http';
-import path from 'node:path';
-import { DEFAULT_ROOT } from './store';
+import { clientEndpoint } from './paths.mjs';
 import { methodSchemas, type Method, type Args } from './contract';
 
 export async function brokerCall<M extends Method>(
   method: M,
   args: Args<M>,
-  socketPath = process.env.JOBDESK_SOCKET ?? path.join(DEFAULT_ROOT, 'broker.sock'),
+  socketPath = clientEndpoint(),
 ): Promise<any> {
   methodSchemas[method].parse(args);
   return new Promise((resolve, reject) => {

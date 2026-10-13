@@ -1,53 +1,100 @@
-# job-search-harness
+# Job Search Harness
 
-A private job-search workspace where AI can draft but cannot invent. It finds
-leads, drafts tailored applications from reviewed résumé claims, and hands
-batches to an MCP worker. Nothing counts as submitted without a saved
-confirmation.
+A private job-search workspace that runs on your own computer. Your AI assistant
+(Claude or ChatGPT) helps you find roles, prepare applications and keep track of
+them, but it can only use résumé claims you have approved, and nothing counts as
+submitted until you have the employer's confirmation.
+
+- **Private by design.** Everything lives in a folder on your computer. There is
+  no account, cloud database or analytics.
+- **No invented experience.** You import your own résumé, approve each claim,
+  and drafts are built from those exact words.
+- **Works with the assistant you already use.** Claude Desktop, the ChatGPT
+  desktop app (Codex mode) or Codex connect to it through MCP.
 
 The design is written up at
 [work.thearcades.me/work/job-search-cockpit](https://work.thearcades.me/work/job-search-cockpit).
 
-## Layout
+## Install
 
-| Path | What it is |
-| --- | --- |
-| `app/jobs`, `app/api/jobs` | Hosted cockpit (Next.js) behind GitHub OAuth (`auth.ts`) |
-| `services/jobdesk` | Local PGlite jobdesk: owner service, CLI, and stdio MCP adapter |
-| `lib/` | Discovery, fit scoring, drafting, queue, résumé truths, PDF rendering |
-| `db/migrations` | Checksummed SQL migrations shared by the hosted and local stores |
-| `docs/` | MCP API contract, local jobdesk design and validation, foundation notes |
+A one-click installer for Claude Desktop is on the way. Until then, setup takes
+a few minutes and needs [Node.js 22 or later](https://nodejs.org/).
 
-## Run
+1. Download this repository (green **Code** button, then **Download ZIP**) and unzip it
+   somewhere permanent, such as your Documents folder.
+2. Open a terminal in that folder and run:
+
+   ```sh
+   npm install
+   npm run jobs:cli -- start-background
+   ```
+
+3. Connect your assistant. Point it at `services/jobdesk/mcp-server.mjs` in that
+   folder, using the full path:
+   - **Claude Desktop:** Settings → Developer → Edit Config, then add
+     ```json
+     { "mcpServers": { "job-search-harness": { "command": "node", "args": ["/full/path/to/services/jobdesk/mcp-server.mjs"] } } }
+     ```
+   - **ChatGPT desktop (Codex mode) or Codex:** add to `~/.codex/config.toml`
+     ```toml
+     [mcp_servers.job-search-harness]
+     command = "node"
+     args = ["/full/path/to/services/jobdesk/mcp-server.mjs"]
+     ```
+   Restart the assistant afterwards.
+4. Open your workspace with `npm run jobs:cli -- open`.
+
+## Get started
+
+1. **Add your résumé.** Attach it in Claude or ChatGPT and say *"Import my résumé
+   into Job Search Harness."* Or paste it on the Résumé truths page.
+2. **Review your claims** on the Résumé truths page. Only approved claims can be
+   used in a draft.
+3. **Add your searches** in Settings: one per kind of role and place, each with
+   an optional Google Alert RSS feed.
+4. **Save jobs you want**, add the original posting, and ask your assistant to
+   prepare the application. You approve the draft before anything is sent.
+
+The jobdesk runs while your computer is awake. Restart it after a reboot with
+`npm run jobs:cli -- start-background`, and stop it with
+`npm run jobs:cli -- stop-background`. Create a backup anytime in Settings.
+
+Drafting inside the workspace, without an assistant, is optional: choose
+Anthropic or OpenAI in Settings and paste your own API key. Keys stay in a
+private file on your computer, outside the database and its backups.
+
+## Platforms
+
+macOS, Windows and Linux. Your data is in:
+
+- **macOS:** `~/Library/Application Support/Job Search Harness`
+- **Windows:** `%LOCALAPPDATA%\Job Search Harness`
+- **Linux:** `~/.local/share/job-search-harness`
+
+## Development
 
 ```sh
 npm install
-npm test                 # lib unit tests
-npm run test:jobdesk     # local jobdesk service tests
-npm run build            # hosted cockpit
-npm run jobs:start       # local jobdesk owner (see docs/local-jobdesk.md)
+npm run typecheck && npm run lint
+npm test                   # library tests
+npm run test:jobdesk       # owner, broker, MCP and migration tests
+npx playwright install chromium
+npm run test:jobdesk:browser && npm run test:truths
+npm start                  # foreground owner on 127.0.0.1:4317
 ```
 
-Browser suites: `npm run test:jobdesk:browser` and `npm run test:truths`
-(run `npx playwright install chromium` first).
+| Path | What it is |
+| --- | --- |
+| `services/jobdesk` | Owner, broker, CLI, MCP adapter (`mcp-server.mjs`) and cockpit UI |
+| `lib/` | Truths, discovery, drafting, queue, review, settings and PDF rendering |
+| `db/migrations` | Checksummed migrations; never edit one that has shipped |
+| `docs/` | [Jobdesk design](docs/local-jobdesk.md) and [MCP tools](docs/jobs-mcp-api.md) |
 
-Hosted configuration is listed in `.env.example`.
+CI runs every check on macOS, Windows and Linux.
 
 ## Provenance
 
 Split out of [Arcadesys/work-thearcades-me](https://github.com/Arcadesys/work-thearcades-me)
-on 2026-10-13 with filtered history, so `git log` covers every harness commit
-from the original repo. PR numbers in older commit messages refer to that
-repository.
-
-`lib/resume-truth-seeds.json` is a frozen snapshot of the portfolio résumé
-exports as of the split. The positional claim IDs are load-bearing, so the
-snapshot does not track later résumé edits; review and edit claims in the
-Truths view instead.
-
-## Cutover status
-
-Staged. The live cockpit still runs from the portfolio's Vercel project at
-`work.thearcades.me/jobs`, and the installed job-hunt plugin still points
-there. Until this repo has its own deployment, OAuth callback, and repointed
-plugin, the copy in the portfolio repo remains the production one.
+on 2026-10-13 with filtered history; PR numbers in older commit messages refer
+to that repository. The tag `hosted-final` marks the last version with the
+retired hosted cockpit (Next.js, Neon and GitHub sign-in).

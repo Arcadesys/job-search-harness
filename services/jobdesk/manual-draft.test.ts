@@ -1,18 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { JobdeskStore } from './store';
 import { createService, initializeService } from './service';
 import { leadIdForUrl } from '../../lib/job-discovery';
+import { tempRoot } from '../../tests/fixtures/temp-root';
+import { loadSample } from '../../tests/fixtures/sample-resume';
 
 test('manual materials persist without a provider call and retain approval, truth and duplicate guards', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-manual-');
+  const root = await tempRoot('jobdesk-manual-');
   const store = await JobdeskStore.open(root);
   const oldFetch = globalThis.fetch;
   let requests = 0;
   globalThis.fetch = async () => { requests++; throw new Error('No provider call permitted in this fixture.'); };
   try {
     await initializeService(store);
+    await loadSample(store);
     const service = createService(store);
     const call = (method: any, args: any[] = []) => service({ method, args }) as Promise<any>;
     const truths = await call('truth.list');

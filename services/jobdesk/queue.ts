@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { recordApplicationReceipt, type BatchItemStatus } from '../../lib/job-queue';
+import { readTimeZone } from '../../lib/jobdesk-settings';
 import type { Sql } from '../../lib/job-storage';
 import { JobdeskError } from './errors';
 import type { DraftBinding } from './submission-draft';
@@ -150,7 +151,7 @@ export async function confirmSubmission(
     throw new Error('The existing receipt belongs to a different submission attempt or draft.');
   // This service operation is wrapped in a short transaction, including the
   // existing atomic receipt/event/lead statement, by service.ts.
-  const receipt = await recordApplicationReceipt(owner, input.itemId, input, sql);
+  const receipt = await recordApplicationReceipt(owner, input.itemId, input, sql, await readTimeZone(sql));
   await sql`UPDATE job_application_receipts SET attempt_id=${input.attemptId},draft_version=${attempt.draftVersion},draft_hash=${attempt.draftHash}
     WHERE id=${receipt.receiptId} AND owner_id=${owner}`;
   await sql`UPDATE jobdesk_submission_attempts SET state='confirmed',updated_at=clock_timestamp() WHERE id=${input.attemptId} AND owner_id=${owner}`;

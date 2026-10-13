@@ -1,15 +1,15 @@
-import { hostedJobSql, type Sql } from './job-storage';
+import type { Sql } from './job-storage';
+import { systemTimeZone } from './jobdesk-settings';
 
-export const JOB_REVIEW_TIME_ZONE = 'America/Chicago';
 export const REVIEW_EVENT_TYPES = ['kept', 'application', 'reply', 'interview', 'offer'] as const;
 export type ReviewEventType = typeof REVIEW_EVENT_TYPES[number];
 const MANUAL_REVIEW_EVENT_TYPES = ['kept', 'reply', 'interview', 'offer'] as const;
 const SITE_OUTCOME_TYPES = ['hiring_inquiry', 'conversation_booked'] as const;
 
-const db = hostedJobSql;
 
-export function centralDate(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: JOB_REVIEW_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+/** The calendar date in the user's review time zone. */
+export function localDate(now = new Date(), timeZone = systemTimeZone()): string {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
   const part = (type: string) => parts.find((item) => item.type === type)!.value;
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
@@ -20,7 +20,7 @@ function isIsoDate(value: string): boolean {
   return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
 }
 
-export function getReviewWeeks(today = centralDate(), count = 8): string[] {
+export function getReviewWeeks(today = localDate(), count = 8): string[] {
   if (!isIsoDate(today) || count < 1 || count > 26) throw new Error('Invalid review window.');
   const date = new Date(`${today}T12:00:00Z`);
   const day = date.getUTCDay();
@@ -32,17 +32,17 @@ export function getReviewWeeks(today = centralDate(), count = 8): string[] {
   });
 }
 
-export async function listReviewLeads(sql: Sql = db()) {
+export async function listReviewLeads(sql: Sql) {
   return await sql`SELECT id,title,organization,source_url AS "sourceUrl",decision FROM job_leads WHERE decision <> 'pass' ORDER BY title`;
 }
 
-export async function listWeeklyReview(weeks: string[], sql: Sql = db()) {
+export async function listWeeklyReview(weeks: string[], sql: Sql, timeZone = systemTimeZone()) {
   if (!weeks.length || weeks.length > 26 || weeks.some((week) => !isIsoDate(week))) throw new Error('Invalid review weeks.');
   const payload = JSON.stringify(weeks.map((week_start) => ({ week_start })));
   return await sql`WITH weeks AS (
       SELECT week_start FROM jsonb_to_recordset(${payload}::jsonb) AS x(week_start date)
     ), leads AS (
-      SELECT date_trunc('week', discovered_at AT TIME ZONE ${JOB_REVIEW_TIME_ZONE})::date AS week_start, count(*)::int AS leads
+      SELECT date_trunc('week', discovered_at AT TIME ZONE ${timeZone})::date AS week_start, count(*)::int AS leads
       FROM job_leads GROUP BY 1
     ), events AS (
       SELECT date_trunc('week', occurred_on::timestamp)::date AS week_start,
@@ -52,7 +52,7 @@ export async function listWeeklyReview(weeks: string[], sql: Sql = db()) {
         count(*) FILTER (WHERE event_type='offer')::int AS offers
       FROM job_review_events GROUP BY 1
     ), applications AS (
-      SELECT date_trunc('week', confirmed_at AT TIME ZONE ${JOB_REVIEW_TIME_ZONE})::date AS week_start,
+      SELECT date_trunc('week', confirmed_at AT TIME ZONE ${timeZone})::date AS week_start,
         count(*)::int AS applications
       FROM job_application_receipts GROUP BY 1
     ), site_outcomes AS (
@@ -74,14 +74,14 @@ export async function listWeeklyReview(weeks: string[], sql: Sql = db()) {
       LEFT JOIN job_review_weeks r USING (week_start) ORDER BY w.week_start DESC`;
 }
 
-export async function listSiteOutcomes(sql: Sql = db()) {
+export async function listSiteOutcomes(sql: Sql) {
   return await sql`SELECT id, outcome_type AS type, occurred_on AS date, evidence_ref AS "evidenceRef"
     FROM work_site_outcomes ORDER BY occurred_on DESC, id DESC LIMIT 30`;
 }
 
-export async function recordSiteOutcome(input: { type: string; date: string; evidenceRef: string }, sql: Sql = db()): Promise<void> {
+export async function recordSiteOutcome(input: { type: string; date: string; evidenceRef: string }, sql: Sql, timeZone = systemTimeZone()): Promise<void> {
   if (!SITE_OUTCOME_TYPES.includes(input.type as typeof SITE_OUTCOME_TYPES[number])) throw new Error('Choose a supported outcome.');
-  if (!isIsoDate(input.date) || input.date > centralDate()) throw new Error('Enter a valid date that has happened.');
+  if (!isIsoDate(input.date) || input.date > localDate(new Date(), timeZone)) throw new Error('Enter a valid date that has happened.');
   const evidenceRef = input.evidenceRef.trim();
   if (!evidenceRef || evidenceRef.length > 160) throw new Error('Enter a short private evidence reference.');
   await sql`INSERT INTO work_site_outcomes (outcome_type, occurred_on, evidence_ref)
@@ -89,15 +89,15 @@ export async function recordSiteOutcome(input: { type: string; date: string; evi
     ON CONFLICT (outcome_type, evidence_ref) DO UPDATE SET occurred_on=EXCLUDED.occurred_on`;
 }
 
-export async function removeSiteOutcome(id: string, sql: Sql = db()): Promise<void> {
+export async function removeSiteOutcome(id: string, sql: Sql): Promise<void> {
   if (!/^\d{1,18}$/.test(id)) throw new Error('Invalid outcome.');
   await sql`DELETE FROM work_site_outcomes WHERE id=${id}::bigint`;
 }
 
-export async function recordReviewEvent(input: { leadId: string; type: string; date: string; note?: string }, sql: Sql = db()): Promise<void> {
+export async function recordReviewEvent(input: { leadId: string; type: string; date: string; note?: string }, sql: Sql, timeZone = systemTimeZone()): Promise<void> {
   if (!MANUAL_REVIEW_EVENT_TYPES.includes(input.type as typeof MANUAL_REVIEW_EVENT_TYPES[number])) throw new Error('Choose a supported activity type.');
   if (!isIsoDate(input.date)) throw new Error('Enter a valid activity date.');
-  if (input.date > centralDate()) throw new Error('Record an activity only after its date has happened.');
+  if (input.date > localDate(new Date(), timeZone)) throw new Error('Record an activity only after its date has happened.');
   if (!input.leadId || input.leadId.length > 160) throw new Error('Choose a lead.');
   const result = await sql`INSERT INTO job_review_events (lead_id,event_type,occurred_on,note)
     SELECT id,${input.type},${input.date},${(input.note ?? '').slice(0,1000)} FROM job_leads WHERE id=${input.leadId}
@@ -105,7 +105,7 @@ export async function recordReviewEvent(input: { leadId: string; type: string; d
   if (!result.length) throw new Error('Lead not found.');
 }
 
-export async function markReviewWeekComplete(weekStart: string, sql: Sql = db()): Promise<void> {
+export async function markReviewWeekComplete(weekStart: string, sql: Sql): Promise<void> {
   if (!isIsoDate(weekStart) || !getReviewWeeks(weekStart, 1).includes(weekStart)) throw new Error('Invalid review week.');
   await sql`INSERT INTO job_review_weeks (week_start) VALUES (${weekStart})
     ON CONFLICT (week_start) DO UPDATE SET reviewed_at=now()`;

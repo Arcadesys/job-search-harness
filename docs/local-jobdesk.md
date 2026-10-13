@@ -1,234 +1,149 @@
-# Local Jobdesk
+# Jobdesk design
 
-This branch implements the reviewed fresh local PGlite design. It does not cut
-over the installed plugin, hosted jobs API, or Vercel cron. The public portfolio,
-`lib/resume.ts`, published PDF, and newsletter are independent of this service.
+The jobdesk is the whole product: one local owner process holds a private
+PGlite database, serves the cockpit on loopback, and answers a private broker
+that the MCP adapter and CLI use. There is no hosted service, account or
+cloud database. The hosted version that preceded it is tagged `hosted-final`.
 
-## Foreground use after review
+## Where data lives
 
-From this checkout, with the locked dependencies installed:
+| Platform | Data folder | Broker |
+| --- | --- | --- |
+| macOS | `~/Library/Application Support/Job Search Harness/` | `broker.sock` in that folder |
+| Windows | `%LOCALAPPDATA%\Job Search Harness\` (never the roaming profile) | named pipe `\\.\pipe\job-search-harness-<hash of the folder>` |
+| Linux | `$XDG_DATA_HOME/job-search-harness/` (default `~/.local/share/…`) | `broker.sock` in that folder |
+
+An install from before the rename keeps using `~/Library/Application
+Support/Arcades Jobdesk/` on macOS when that folder exists and the new one
+does not; nothing is moved. `JOBDESK_DATA_DIR` overrides the folder for the
+owner and its clients; `JOBDESK_SOCKET` overrides only where clients connect.
+`services/jobdesk/paths.mjs` is the single source for these rules.
+
+The folder must not be a symlink, inside a Git checkout, or inside iCloud,
+Dropbox, OneDrive or Google Drive. On macOS and Linux it must belong to the
+current user with mode 0700; Windows relies on the per-user profile. Unix
+socket paths are capped near 104 bytes, and startup says so plainly if the
+folder path is too long.
+
+Inside the folder: `database/` (PGlite 0.5.8, pinned), `artifacts/` (review
+PDFs), `backups/`, `owner.lock`, `owner-process.json` and `owner.log` for a
+background owner, and `secrets.json` (API keys, mode 0600) once one is saved.
+
+## Running the owner
 
 ```sh
-npm run jobs:start
-```
-
-The service owns `~/Library/Application Support/Arcades Jobdesk/`, outside Git
-and synced folders. It applies checksummed migrations before serving requests,
-then listens on a user-only `broker.sock` and HTTP `127.0.0.1:4317`. An exclusive
-owner lock prevents a second PGlite instance. Shut down with Control-C; no launch
-agent or persistent scheduler is installed. Laptop sleep pauses local work.
-
-Use another terminal to open an authenticated browser session:
-
-```sh
+npm run jobs:cli -- start-background   # or: npm start (foreground, Control-C to stop)
 npm run jobs:cli -- status
-npm run jobs:cli -- open
-```
-
-The open command obtains a one-use, one-minute launch ticket over the private
-socket, opens the browser, and removes the URL fragment after exchange. The
-browser uses an eight-hour in-memory HttpOnly/SameSite=Strict session and a CSRF
-token. Restarting the service invalidates sessions. Unexpected Host/Origin,
-forwarded headers, cross-site requests, missing sessions, and invalid CSRF are
-rejected. The local server is a separate frontend; hosted OAuth is preserved.
-
-The cockpit reuses `JobsShell` and the complete `TruthEditor`. It includes lead
-review, batches, original posting capture, saved draft review/editing, PDF review
-packets, search settings, weekly activity, and submission reconciliation. It
-uses validated domain methods through the sole owner. There is no SQL endpoint.
-
-For an alternative private directory, set both `JOBDESK_DATA_DIR` for the
-foreground owner and `JOBDESK_SOCKET` for clients. Directory roots must belong to
-the current user, have permissions 0700, and be outside Git and recognized cloud
-sync folders. PGlite 0.5.8 is pinned. Migration checksum drift, ledger gaps, or a
-newer schema fail closed. Existing local stores are backed up before upgrades.
-
-## Worker adapter
-
-The installed consumer was inspected at
-`~/.codex/plugins/cache/personal/job-hunt/0.1.0+codex.20260925191619/mcp/server.mjs`.
-It is a Node stdio server with a fixed hosted REST origin and request-time
-Keychain access. This branch includes a separately reviewable local adapter:
-
-```sh
-npm run jobs:mcp
-```
-
-It preserves the five verified tool names and argument schemas in
-`docs/jobs-mcp-api.md`. It uses private Unix IPC, never opens the database, reads
-no Keychain token, and has no hosted fallback. Only MCP JSON-RPC is written to
-stdout. Configure a supported local client to launch
-`node /absolute/checkout/services/jobdesk/mcp-server.mjs` only at approved cutover.
-The currently installed plugin configuration remains unchanged.
-
-The local adapter adds `job_hunt_renew_lease`, `job_hunt_begin_submission`, and
-`job_hunt_mark_submission_uncertain`. These names are new branch functionality,
-not claims about the previously installed plugin. Setting an item to preparing
-atomically claims its 120-second lease; the worker renews it during preparation.
-Stale generations cannot update the item. Before clicking Submit, the worker
-must read the approved draft used to fill the form and pass its `draftVersion`
-and `draftHash` to `job_hunt_begin_submission`. The broker rejects a changed
-version, content hash, approval, or claim snapshot. On stale rejection, read the
-current approved draft and refill the form before retrying. The durable attempt
-retains that exact version, hash, and content snapshot; its confirmation receipt
-inherits the attempt's binding even if the saved draft is edited afterward.
-
-Definitive stale-lease errors clear the MCP adapter's cached lease. Setting an
-item to preparing can reacquire it once before any submission dispatch. A
-pending/uncertain attempt or an ambiguous begin response prevents automatic
-reclaim and another submission; reconcile it first. The same MCP process resets
-its attempt cache only after the broker confirms its exact attempt is
-`not_submitted` and the item was explicitly requeued, with no open/confirmed attempt.
-
-Submission takes place outside Jobdesk and still requires the user's employer
-action authorization. After observing confirmation, the existing receipt tool
-records it. Receipt, item, lead, weekly event, and attempt update are atomic.
-Same-key retries return the receipt; conflicting receipts fail. A timeout or
-owner restart leaves the attempt uncertain and prevents another claim, batch,
-or requeue. Inspect employer confirmation/history before reconciliation. If
-evidence establishes no submission, record that evidence; pending and uncertain
-attempts atomically block the item and clear/fence the old lease. A deliberate
-requeue and a new claim are required before further preparation. No browser or model operation spans a DB
-transaction. The service serializes domain requests; model work can delay other
-requests while in flight.
-
-## Fresh-start facts and reviews
-
-The private owner also supports explicit `truth.reconcileHosted` recovery of a
-user-supplied export. It checks the exact export SHA-256, unique stable IDs and
-expected local versions/content before recovering only exported reviewed or
-rejected decisions. Unreviewed source records and unrelated local records stay
-unchanged. A conflict rejects the entire transaction. Original source notes,
-opaque source versions, origin, export hash and file reference are retained in
-provenance; local versions are newly generated and prior history is preserved.
-Identical retries append no history. Take a supported backup before recovery.
-This operation has no network access and never writes to the hosted store.
-
-The local broker supports `truth.addProject` with `{ slug, claim, sourceNote }`.
-It derives `project.<slug>`, validates nonblank wording/provenance, and atomically
-adds an unreviewed record and its first immutable version. Identical retries return
-the existing record without changing its approval or history. Conflicting IDs or
-duplicate wording are rejected. This is insert-only; existing truths and review
-decisions are preserved. Use `truth.list` and `truth.versions` for read-back.
-
-All baseline résumé claims start unreviewed, with source notes. Approvals are not
-inherited from the hosted database. Claim versions, stale-batch conflicts,
-independent duplicate wording, and saved draft snapshots are retained. Changed
-wording/sources invalidate draft approval. New and edited drafts require review.
-PDFs are labelled review packets and registered with hashes, draft version,
-saved claim versions, and approval state.
-
-Bootstrap reads optional provenance-labelled user reports from the private
-data root's `bootstrap.json`. Actual application IDs and source notes stay
-outside Git. Submitted reports and expected referrals are separate history,
-not browser-confirmation receipts or inferred direct applications. Reported
-submitted job IDs cannot be queued again. Confirmed weekly application totals
-continue to count receipts only. Tests use synthetic employers and role IDs.
-
-Discovery is manual. The six existing Google Alert feeds, UTC daily successful
-scan dedupe, monthly poll cap, and Chicago weekly reporting remain. Import
-extracted LinkedIn lead fields through the broker:
-
-```sh
-npm run jobs:import < extracted-leads.json
-```
-
-Imports remain unverified and deduplicate canonical URLs. No email credentials
-or full email bodies are stored. A stopped local broker fails rather than
-switching to Neon. The original import script's hosted invocation remains for
-rollback. `JOBS_STORAGE_MODE=local` also prevents accidental hosted SQL fallback.
-
-Drafting uses an existing provider key supplied to the foreground process. This
-change does not create or configure credentials. The existing model and $8.50
-monthly estimator are retained; confirm current provider availability/pricing
-before enabling real calls at cutover. Missing reviewed claims/posting evidence
-or keys block drafting. Failed/unmeasured calls close the cap. Interrupted
-durable model markers close the corresponding month's cap on restart.
-
-## Backups and recovery
-
-```sh
-npm run jobs:cli -- backup
-npm run jobs:cli -- restore /absolute/backup/directory /absolute/new/private/directory
-```
-
-Backup admission runs through the owner, quiesces operations, and uses PGlite's
-supported `dumpDataDir`, not a hot directory copy. Each snapshot includes a
-runtime/migration/checksum manifest, a JSON logical table export, and registry
-artifact hashes plus copies. Credentials and sessions are not exported. Restore
-requires a new directory, checks the runtime and dump/artifact hashes, stages
-verified artifact bytes under the owner lock before any upgrade backup, then opens
-and verifies the migration ledger. Inspect the restored store before promotion;
-there is no automatic active-directory overwrite or configuration switch.
-
-The dump/load mechanism follows the [PGlite API](https://pglite.dev/docs/api).
-For a runtime minor-version change, use the
-[documented logical upgrade path](https://pglite.dev/docs/upgrade), rather than
-treating binary dumps as a cross-version format. Keep seven daily and four
-weekly snapshots when operating backups; retention and off-device backup are
-not automatically configured by this branch.
-
-If a crash leaves `owner.lock`, use `npm run jobs:cli -- recover-lock` after the
-owner stops. Recovery proves the recorded PID is absent and checks the lock did
-not change. It never replays submissions. A live owner or ambiguous lock is
-rejected. Do not delete locks while workers are active.
-
-## Review and cutover gates
-
-1. Parent reviews this draft PR and its recorded validation. Merge/deploy requires
-   the applicable approval; no rollout is performed by these instructions.
-2. Choose the foreground directory and supported local client. Review baseline
-   claims, provider availability/pricing, and the separate user-reported history.
-3. Start the owner; launch the cockpit and point the chosen client at the local
-   adapter. Test a read and synthetic preparation before employer work.
-4. At separately approved cutover, stop cloud jobs writes and remove only
-   `/api/jobs/discovery` from Vercel cron. Preserve the newsletter cron and public
-   settings. Token revocation, persistent scheduling, remote access, and cloud
-   retirement require their own approval. Avoid dual writes.
-5. For rollback, stop local workers, back up local state, restore prior client
-   configuration, and reconcile all post-cutover submissions. The hosted
-   backend is a dated snapshot; never overwrite local state from it automatically.
-
-See `docs/local-jobdesk-validation.md` for measured evidence and limitations.
-
-
-## Manually started owner independent of an executor session
-
-For application work spanning executor turns, use:
-
-```sh
-npm run jobs:cli -- start-background
-npm run jobs:cli -- status
+npm run jobs:cli -- open                # one-use browser link
 npm run jobs:cli -- stop-background
 ```
 
-`start-background` creates an independent process session with no inherited
-terminal or pipe handles, waits for the same private socket's health response,
-and prints its verified PID. It uses the same data root, migrations and sole-owner
-lock as foreground startup. A live healthy owner is reused; an unhealthy live
-owner or stopped lock is rejected. Stopped-lock recovery remains the explicit
-`recover-lock` command and still requires submission reconciliation.
+Startup takes an exclusive `owner.lock`, applies checksummed migrations (taking
+a backup first when upgrading an existing store), marks any interrupted
+submission attempt `uncertain`, and then listens. Migration checksum drift,
+ledger gaps or a newer schema fail closed.
 
-Startup writes only private `owner.log` and `owner-process.json` files under the
-existing private data root. The latter binds graceful stop to the exact lock
-created by this launcher. `stop-background` verifies the binding, live PID and
-health before sending SIGTERM, then waits for normal database/lock cleanup. It
-will not stop a foreground or replacement owner with a different binding.
+`start-background` launches an independent process session (no console window on
+Windows), waits for a healthy broker, and records the exact lock it created in
+`owner-process.json`. A healthy running owner is reused; an unhealthy one or a
+stopped lock is refused. `stop-background` verifies that binding and asks the
+owner to shut down over the broker (`owner.shutdown`, which the browser session
+cannot call), so the database and lock close cleanly on every platform. It is a
+manually started process, not a login item or crash supervisor: it survives the
+launching terminal but not a reboot.
 
-This is a manually started process, not a launch agent, login installation,
-scheduler, crash supervisor or restart policy. It does not alter credentials,
-security, databases, application records or hosted configuration. It survives
-its launcher/executor process session but not a host reboot or process kill.
-Check health before work; inspect private logs on failure. Restarts invalidate
-browser sessions and preserve/fence uncertain submission attempts as before.
-# Manual application drafts
+After a crash leaves `owner.lock`, `npm run jobs:cli -- recover-lock` removes it
+only after proving the recorded PID is gone. It never replays submissions.
 
-The private broker supports `draft.saveManual` with one object containing
-`leadId`, `resumeVariant`, `outreach`, and reviewed `claimIds`. It saves prepared
-materials without an API key or model assessment. The original posting must be
-verified and saved; passed/applied leads and unresolved or confirmed submission
-attempts are rejected. Current reviewed truths are snapshotted by the owner.
-Saving always requires renewed review. The existing version-specific
-`draft.approve` and hash-bound `submission.begin` checks still apply. Callers must
-keep the exact reviewed résumé, attachment identity and answers in the materials;
-this method does not infer factual support for arbitrary prose or grant approval.
+## The cockpit
+
+`open` gets a one-use, one-minute ticket over the broker. The browser trades it
+for an eight-hour HttpOnly, SameSite=Strict session plus a CSRF token; restarting
+the owner ends sessions. Unexpected Host or Origin headers, forwarded headers and
+cross-site requests are refused. The browser API cannot claim leases, begin or
+record submissions, open new sessions or stop the owner. There is no SQL
+endpoint: every call is a validated domain method run by the owner.
+
+Views: Today (get-started checklist, batches, reconciliation when an item is
+blocked), Leads, Résumé truths, Weekly review and Settings (searches, time zone,
+optional drafting provider, backups). The UI is bundled at startup from
+`services/jobdesk/ui.tsx` and `services/jobdesk/ui/`.
+
+## Truths
+
+A fresh install has no claims. They arrive three ways, always unreviewed with a
+source note and a first immutable version:
+
+- `truth.importResume` (MCP `job_hunt_import_resume`): a structured résumé the
+  user's assistant extracted from their own document. Allowed once, while the
+  bank is empty. IDs follow the shapes the editor groups by: `profile.*`,
+  `summary`, `accomplishment.N`, `experience.N.{employer,title,dates,claim.M}`,
+  `earlier.N`, `skills.N`, `education.N`, `other.N`.
+- `truth.importText` (MCP `job_hunt_add_resume_text`, and the cockpit paste box):
+  one claim per line as `other.N`, bullets stripped, existing wording skipped.
+- `truth.addProject`: one `project.<slug>` claim; identical retries are no-ops.
+
+None of these changes an existing claim, approval or history. Review happens in
+the cockpit in batches with version checks, so a stale batch saves nothing.
+Editing reviewed wording returns it to unreviewed. An accomplishment is shown
+beside the one role bullet it clearly restates (word overlap at least 0.3 and at
+least 0.2 ahead of the next bullet); otherwise it stays under Other claims.
+
+## Drafts and submissions
+
+Drafts come from approved claims only. The user's assistant can save one with
+`draft.saveManual`, or the cockpit's optional assessment can prepare one with the
+user's own Anthropic or OpenAI key. Either way the saved résumé text is assembled
+from the exact approved claim wording, a snapshot of those claims is stored with
+the draft, and the draft needs explicit approval. Changing a claim afterwards
+invalidates that approval. The optional assessment also requires a verified
+original posting, stops at an $8.50 monthly estimate, and closes the month on
+any failed or unmeasured call.
+
+The worker flow, with every guard enforced by the owner:
+
+1. Setting an item to `preparing` claims a 120-second lease; the worker renews it.
+   A stale lease generation cannot write.
+2. Before clicking Submit, the worker passes the approved draft's `draftVersion`
+   and `draftHash` to `job_hunt_begin_submission`. A changed draft, approval or
+   claim snapshot is refused; read the current draft and refill the form.
+3. The durable attempt keeps that exact draft snapshot. The confirmation receipt
+   inherits it even if the draft is edited later.
+4. After seeing the employer's confirmation, `job_hunt_record_submission` saves the
+   receipt, item, lead stage, weekly event and attempt state in one transaction.
+   Same-key retries return the same receipt.
+
+A timeout or restart leaves the attempt `uncertain` and blocks another claim,
+batch or requeue for that item. Check the employer's confirmation or history
+first; if nothing was submitted, record that evidence in the cockpit, then
+requeue deliberately. The jobdesk never submits to an employer itself.
+
+## Discovery and history
+
+Searches are the user's own (up to 20), each with an optional Google Alert RSS
+feed. Scans run only when asked: one successful scan per UTC day, at most 300
+feed polls a month. LinkedIn alert emails can be imported as leads with
+`npm run jobs:import < extracted-leads.json`; no email credentials or bodies are
+stored. Every lead stays unverified until its original posting is saved.
+
+An optional `bootstrap.json` in the data folder records earlier, user-reported
+applications so they cannot be queued again. Reported history is shown apart
+from confirmed receipts, and weekly totals count receipts only. Weekly reviews
+and receipt dates use the time zone in Settings, defaulting to the computer's.
+
+## Backups
+
+```sh
+npm run jobs:cli -- backup
+npm run jobs:cli -- restore /backup/directory /new/private/directory
+```
+
+Backups run through the owner using PGlite's `dumpDataDir`, with a manifest of
+runtime, migrations and checksums, a logical JSON export, and hashed copies of
+review PDFs. API keys and sessions are never included. Restore needs a new
+folder, verifies every hash, and stages artifacts before any upgrade. Moving
+between PGlite minor versions uses the [logical upgrade
+path](https://pglite.dev/docs/upgrade), not binary dumps. Off-device backup is up
+to the user.
+
+`docs/local-jobdesk-validation.md` records the original validation of this design.

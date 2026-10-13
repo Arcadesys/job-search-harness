@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { cp, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
+import { cp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -10,23 +11,28 @@ import { createService, initializeService, LOCAL_OWNER } from './service';
 import { leadIdForUrl } from '../../lib/job-discovery';
 import { fixtureReports } from '../../tests/fixtures/jobdesk-reports';
 import { createReviewPacket } from './artifacts';
+import { tempRoot, posixModes } from '../../tests/fixtures/temp-root';
+import { loadSample } from '../../tests/fixtures/sample-resume';
+
+const SHIPPED = readdirSync(MIGRATIONS).filter((file) => /^\d{4}_[a-z_]+\.sql$/.test(file)).length;
 
 test('real disk: migrations, fresh approvals, leases, uncertainty, atomic receipts, snapshots, backup and restart', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-disk-');
+  const root = await tempRoot('jobdesk-disk-');
   let store = await JobdeskStore.open(root);
-  const restored = await mkdtemp('/tmp/jobdesk-restore-');
+  const restored = await tempRoot('jobdesk-restore-');
   let restoredStore: JobdeskStore | undefined;
-  const cliRestored = await mkdtemp('/tmp/jobdesk-cli-restore-');
+  const cliRestored = await tempRoot('jobdesk-cli-restore-');
   try {
     await fixtureReports(root);
     await initializeService(store);
+    await loadSample(store);
     let call = createService(store);
     assert.equal(
       (await store.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count,
-      9,
+      SHIPPED,
     );
     await assert.rejects(JobdeskStore.open(root), /owner/);
-    assert.equal((await stat(path.join(root, 'owner.lock'))).mode & 0o777, 0o600);
+    if (posixModes) assert.equal((await stat(path.join(root, 'owner.lock'))).mode & 0o777, 0o600);
     const claims = (await call({ method: 'truth.list', args: [] })) as any[];
     assert.ok(claims.length > 40);
     assert.ok(claims.every((c) => c.reviewStatus === 'unreviewed'));
@@ -193,7 +199,7 @@ test('real disk: migrations, fresh approvals, leases, uncertainty, atomic receip
     await assert.rejects(call({ method: 'draft.approve', args: [leadId, draft.approval.version] }));
     const backup = await store.backup();
     assert.ok(backup.manifest.artifacts.length === 1);
-    assert.equal((await stat(path.join(backup.directory, 'database.tar.gz'))).mode & 0o777, 0o600);
+    if (posixModes) assert.equal((await stat(path.join(backup.directory, 'database.tar.gz'))).mode & 0o777, 0o600);
     const logical = JSON.parse(await readFile(path.join(backup.directory, 'logical.json'), 'utf8'));
     assert.equal(logical.job_mcp_tokens, undefined);
     restoredStore = await JobdeskStore.open(
@@ -220,6 +226,7 @@ test('real disk: migrations, fresh approvals, leases, uncertainty, atomic receip
     await store.close();
     store = await JobdeskStore.open(root);
     await initializeService(store);
+    await loadSample(store);
     call = createService(store);
     assert.equal(
       ((await call({ method: 'items.read', args: [itemId] })) as any).item.status,
@@ -274,8 +281,8 @@ test('real disk: migrations, fresh approvals, leases, uncertainty, atomic receip
 });
 
 test('migration drift, unknown schema, failed DDL rollback and explicit crash-lock recovery', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-ledger-'),
-    directory = await mkdtemp('/tmp/jobdesk-migrations-');
+  const root = await tempRoot('jobdesk-ledger-'),
+    directory = await tempRoot('jobdesk-migrations-');
   await cp(MIGRATIONS, directory, { recursive: true });
   let store = await JobdeskStore.open(root, directory);
   try {
@@ -294,7 +301,7 @@ test('migration drift, unknown schema, failed DDL rollback and explicit crash-lo
     );
     assert.equal(
       (await store.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count,
-      9,
+      SHIPPED,
     );
     await rm(path.join(directory, '0010_failure.sql'));
     await store.sql`INSERT INTO jobdesk_migrations(version,checksum) VALUES('9999_newer.sql','fixture')`;
@@ -320,7 +327,7 @@ test('migration drift, unknown schema, failed DDL rollback and explicit crash-lo
     store = await JobdeskStore.open(root, directory);
     assert.equal(
       (await store.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count,
-      10,
+      SHIPPED + 1,
     );
     const backups = await import('node:fs/promises').then((fs) =>
       fs.readdir(path.join(root, 'backups')),
@@ -329,7 +336,7 @@ test('migration drift, unknown schema, failed DDL rollback and explicit crash-lo
     const manifest = JSON.parse(
       await readFile(path.join(root, 'backups', backups[0], 'manifest.json'), 'utf8'),
     );
-    assert.equal(manifest.migrations.length, 9);
+    assert.equal(manifest.migrations.length, SHIPPED);
   } finally {
     await store.close();
     await rm(root, { recursive: true, force: true });
@@ -338,15 +345,17 @@ test('migration drift, unknown schema, failed DDL rollback and explicit crash-lo
 });
 
 test('actual CLI restore stages a real 0008 backup artifact before migration 0009 upgrade backup', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-legacy-'),
-    directory = await mkdtemp('/tmp/jobdesk-legacy-migrations-'),
-    restored = await mkdtemp('/tmp/jobdesk-legacy-restored-');
+  const root = await tempRoot('jobdesk-legacy-'),
+    directory = await tempRoot('jobdesk-legacy-migrations-'),
+    restored = await tempRoot('jobdesk-legacy-restored-');
   await cp(MIGRATIONS, directory, { recursive: true });
-  await rm(path.join(directory, '0009_submission_draft_binding.sql'));
+  // Recreate a store from before 0009 by withholding every later migration.
+  for (const file of await readdir(directory)) if (file > '0009') await rm(path.join(directory, file));
   const legacy = await JobdeskStore.open(root, directory);
   let current: JobdeskStore | undefined;
   try {
     await initializeService(legacy);
+    await loadSample(legacy);
     const call = createService(legacy);
     const claims = (await call({ method: 'truth.list', args: [] })) as any[];
     const url = 'https://example.test/jobs/legacy-restore-fixture', leadId = leadIdForUrl(url);
@@ -363,9 +372,9 @@ test('actual CLI restore stages a real 0008 backup artifact before migration 000
       ['--import', 'tsx', 'services/jobdesk/cli.ts', 'restore', backup.directory, restored],
       { cwd: process.cwd() });
     current = await JobdeskStore.open(restored);
-    assert.equal((await current.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count, 9);
+    assert.equal((await current.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count, SHIPPED);
     assert.deepEqual(await readFile(path.join(restored, packet.relativePath)), bytes);
-    assert.equal((await stat(path.join(restored, packet.relativePath))).mode & 0o777, 0o600);
+    if (posixModes) assert.equal((await stat(path.join(restored, packet.relativePath))).mode & 0o777, 0o600);
     const preUpgrade = await readdir(path.join(restored, 'backups'));
     assert.equal(preUpgrade.length, 1);
     const preUpgradeRoot = path.join(restored, 'backups', preUpgrade[0]);

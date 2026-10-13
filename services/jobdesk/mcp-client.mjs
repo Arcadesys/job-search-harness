@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
-import { homedir } from 'node:os';
-import path from 'node:path';
+import { clientEndpoint } from './paths.mjs';
 
 // Thin IPC consumer: never opens PGlite, accesses Keychain, or falls back online.
 export function localCall(method, args, socketPath) {
@@ -49,8 +48,7 @@ export function localCall(method, args, socketPath) {
 }
 
 export function createLocalApiClient({
-  socketPath = process.env.JOBDESK_SOCKET ??
-    path.join(homedir(), 'Library/Application Support/Arcades Jobdesk/broker.sock'),
+  socketPath = clientEndpoint(),
 } = {}) {
   const workerId = `mcp-${randomUUID()}`;
   const leases = new Map();
@@ -135,7 +133,76 @@ export function createLocalApiClient({
     required: ['itemId'],
     additionalProperties: false,
   };
+  const text = (maxLength, minLength = 1) => ({ type: 'string', minLength, maxLength });
+  const list = (maxItems) => ({ type: 'array', items: text(4000), maxItems });
   request.workerTools = [
+    {
+      name: 'job_hunt_setup_status',
+      description:
+        'Check what this Job Search Harness still needs: résumé truths (and how many are reviewed), job searches, and the time zone. Call this first when helping someone get started.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      run: async () => {
+        const [claims, search, settings] = await Promise.all([
+          call('truth.list', []), call('search.settings', []), call('settings.read', [])]);
+        const count = (status) => claims.filter((claim) => claim.reviewStatus === status).length;
+        return {
+          truths: { total: claims.length, reviewed: count('reviewed'), unreviewed: count('unreviewed') },
+          searches: { total: search.queries.length,
+            withFeeds: search.queries.filter((query) => query.enabled && query.feedUrl).length },
+          timeZone: settings.timeZone,
+          nextStep: !claims.length ? 'Import the user’s résumé with job_hunt_import_resume.'
+            : !count('reviewed') ? 'Ask the user to review their truths in the cockpit before drafting.'
+            : !search.queries.length ? 'Help the user add job searches in the cockpit settings.' : 'Ready.',
+        };
+      },
+    },
+    {
+      name: 'job_hunt_import_resume',
+      description:
+        'First-time import of the user’s own résumé into their truth bank. Copy their wording exactly; do not improve, merge, or invent anything. Every claim arrives unreviewed and the user must approve it before any draft uses it. Fails without changes if truths already exist.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          sourceNote: { ...text(1000, 8), description: 'Where this came from, e.g. "Imported from resume-2026.pdf on 2026-10-13".' },
+          profile: {
+            type: 'object',
+            properties: Object.fromEntries(['name', 'headline', 'location', 'email', 'phone', 'website', 'linkedin', 'github']
+              .map((key) => [key, text(4000)])),
+            additionalProperties: false,
+          },
+          summary: text(4000),
+          accomplishments: { ...list(40), description: 'Headline achievements, if the résumé lists them separately.' },
+          experience: {
+            type: 'array', maxItems: 40,
+            items: {
+              type: 'object',
+              properties: { employer: text(4000), location: text(200, 0), title: text(4000), dates: text(100, 0), bullets: list(40) },
+              required: ['employer', 'title'],
+              additionalProperties: false,
+            },
+          },
+          earlier: { ...list(40), description: 'Older roles listed in one line each.' },
+          skills: { ...list(60), description: 'One group per entry, e.g. "Tools: Jira, SQL".' },
+          education: list(30),
+          other: list(100),
+        },
+        required: ['sourceNote'],
+        additionalProperties: false,
+      },
+      run: (args) => call('truth.importResume', [args]),
+    },
+    {
+      name: 'job_hunt_add_resume_text',
+      description:
+        'Add more of the user’s own claims as plain text, one per line. Lines already in the truth bank are skipped; nothing existing changes. New lines arrive unreviewed.',
+      inputSchema: {
+        type: 'object',
+        properties: { text: text(100_000), sourceNote: text(1000, 8) },
+        required: ['text', 'sourceNote'],
+        additionalProperties: false,
+      },
+      run: (args) => call('truth.importText', [args.text, args.sourceNote]),
+    },
     {
       name: 'job_hunt_renew_lease',
       description:

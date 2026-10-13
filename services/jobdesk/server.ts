@@ -8,6 +8,9 @@ import { handleTruthReview } from '../../lib/resume-truth-http';
 import { JobdeskStore, DEFAULT_ROOT } from './store';
 import { createService, initializeService } from './service';
 import { JobdeskError } from './errors';
+import { brokerEndpoint } from './paths.mjs';
+
+const windows = process.platform === 'win32';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const PRIVATE_HEADERS = {
@@ -49,7 +52,8 @@ function close(server: Server) {
 export async function startJobdesk({
   root = DEFAULT_ROOT,
   port = 0,
-}: { root?: string; port?: number } = {}) {
+  onShutdownRequest,
+}: { root?: string; port?: number; onShutdownRequest?: () => void } = {}) {
   const store = await JobdeskStore.open(root);
   let ipc: Server | undefined;
   let web: Server | undefined;
@@ -58,10 +62,14 @@ export async function startJobdesk({
     const service = createService(store);
     const sessions = new Map<string, { csrf: string; expires: number }>();
     const tickets = new Map<string, number>();
-    const socketPath = path.join(store.root, 'broker.sock');
+    const socketPath = brokerEndpoint(store.root);
+    // macOS and Linux cap Unix socket paths at 104 and 108 bytes.
+    if (!windows && Buffer.byteLength(socketPath) > 103)
+      throw new Error(`The data folder path is too long for a local socket (${socketPath}). Set JOBDESK_DATA_DIR to a shorter folder.`);
     // Only the sole database owner can replace its own stale socket, after the
-    // database lock has been acquired. It is never a remote listener.
-    await rm(socketPath, { force: true });
+    // database lock has been acquired. It is never a remote listener. Windows
+    // named pipes vanish with their process, so there is nothing to remove.
+    if (!windows) await rm(socketPath, { force: true });
     const built = await build({
       entryPoints: [fileURLToPath(new URL('./ui.tsx', import.meta.url))],
       bundle: true,
@@ -70,28 +78,11 @@ export async function startJobdesk({
       format: 'iife',
       jsx: 'automatic',
       define: { 'process.env.NODE_ENV': '"production"' },
-      plugins: [
-        {
-          name: 'local-links',
-          setup(plugin) {
-            plugin.onResolve({ filter: /^next\/link$/ }, () => ({
-              path: 'link',
-              namespace: 'local',
-            }));
-            plugin.onLoad({ filter: /.*/, namespace: 'local' }, () => ({
-              contents:
-                'import React from "react"; export default function Link(props){return React.createElement("a",props);}',
-              resolveDir: fileURLToPath(new URL('../../', import.meta.url)),
-              loader: 'js',
-            }));
-          },
-        },
-      ],
     });
     const css =
-      (await readFile(new URL('../../app/globals.css', import.meta.url), 'utf8')) +
+      (await readFile(new URL('./ui/base.css', import.meta.url), 'utf8')) +
       '\n' +
-      (await readFile(new URL('../../app/jobs/jobs.css', import.meta.url), 'utf8')) +
+      (await readFile(new URL('./ui/jobs.css', import.meta.url), 'utf8')) +
       '\n:root{--font-sans:Arial,sans-serif}';
     let origin = '';
     web = createServer(async (req, res) => {
@@ -126,7 +117,7 @@ export async function startJobdesk({
               "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
           });
           res.end(
-            '<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Local Job Desk</title><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>',
+            '<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Job Search Harness</title><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>',
           );
           return;
         }
@@ -219,6 +210,7 @@ export async function startJobdesk({
           const input = await body(req);
           if (
             input.method === 'browser.open' ||
+            input.method === 'owner.shutdown' ||
             input.method === 'submission.begin' ||
             input.method === 'submission.record' ||
             input.method === 'items.claim' ||
@@ -276,6 +268,12 @@ export async function startJobdesk({
       }
       try {
         const input = await body(req);
+        if (input.method === 'owner.shutdown') {
+          if (!onShutdownRequest) throw new Error('This owner was not started for detached shutdown.');
+          json(res, 200, { data: { ok: true } });
+          setImmediate(onShutdownRequest);
+          return;
+        }
         if (input.method === 'browser.open') {
           if (!Array.isArray(input.args) || input.args.length)
             throw new Error('Invalid launch arguments.');
@@ -295,7 +293,7 @@ export async function startJobdesk({
       }
     });
     await listen(ipc, socketPath);
-    await chmod(socketPath, 0o600);
+    if (!windows) await chmod(socketPath, 0o600);
     return {
       store,
       origin,
@@ -305,7 +303,7 @@ export async function startJobdesk({
         await close(ipc!);
         await close(web!);
         await store.close();
-        await rm(socketPath, { force: true });
+        if (!windows) await rm(socketPath, { force: true });
       },
     };
   } catch (error) {
@@ -317,13 +315,6 @@ export async function startJobdesk({
 }
 
 async function main() {
-  const runtime = await startJobdesk({
-    root: process.env.JOBDESK_DATA_DIR ?? DEFAULT_ROOT,
-    port: Number(process.env.JOBDESK_PORT ?? '4317'),
-  });
-  console.log(
-    `Local Jobdesk ready at ${runtime.origin}. Run npm run jobs:cli -- open for a private session.`,
-  );
   let closing = false;
   const shutdown = async () => {
     if (closing) return;
@@ -331,13 +322,23 @@ async function main() {
     await runtime.close();
     process.exit(0);
   };
+  // The owner answers shutdown only after startJobdesk resolves, so runtime is set.
+  const runtime = await startJobdesk({
+    root: process.env.JOBDESK_DATA_DIR ?? DEFAULT_ROOT,
+    port: Number(process.env.JOBDESK_PORT ?? '4317'),
+    onShutdownRequest: () => void shutdown(),
+  });
+  console.log(
+    `Job Search Harness is running at ${runtime.origin}. Run npm run jobs:cli -- open for a private session.`,
+  );
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-  main().catch(() => {
+  main().catch((error) => {
+    // Local stderr only (the private owner.log when detached); it holds no record contents.
     console.error(
-      'Jobdesk could not start. Check its private directory, owner lock, and migration ledger.',
+      `Job Search Harness could not start: ${error instanceof Error ? error.message : 'unknown error'}. Check its private directory, owner lock, and migration ledger.`,
     );
     process.exitCode = 1;
   });

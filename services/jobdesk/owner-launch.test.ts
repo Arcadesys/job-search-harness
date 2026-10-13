@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brokerCall } from './client';
+import { tempRoot, posixModes } from '../../tests/fixtures/temp-root';
+import { brokerEndpoint } from './paths.mjs';
 
 test('detached owner survives launcher exit, duplicate start reuses owner, verified stop cleans lock', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-detached-');
+  const root = await tempRoot('jobdesk-detached-');
   const cli = fileURLToPath(new URL('./cli.ts', import.meta.url));
   const cwd = fileURLToPath(new URL('../../', import.meta.url));
   const env = { ...process.env, JOBDESK_DATA_DIR: root, JOBDESK_PORT: '0' };
@@ -21,14 +23,14 @@ test('detached owner survives launcher exit, duplicate start reuses owner, verif
     const first = await invoke('start-background'); started = true;
     assert.equal(first.status, 'started');
     // execFile resolved: the launcher exited, but its detached owner is serving.
-    assert.equal((await brokerCall('health', [], path.join(root, 'broker.sock'))).ok, true);
+    assert.equal((await brokerCall('health', [], brokerEndpoint(root))).ok, true);
     const before = await readFile(path.join(root, 'owner.lock'), 'utf8');
     const second = await invoke('start-background');
     assert.equal(second.status, 'already_running');
     assert.equal(second.pid, first.pid);
     assert.equal(await readFile(path.join(root, 'owner.lock'), 'utf8'), before);
-    assert.equal((await stat(path.join(root, 'owner.log'))).mode & 0o777, 0o600);
-    assert.equal((await stat(path.join(root, 'owner-process.json'))).mode & 0o777, 0o600);
+    if (posixModes) assert.equal((await stat(path.join(root, 'owner.log'))).mode & 0o777, 0o600);
+    if (posixModes) assert.equal((await stat(path.join(root, 'owner-process.json'))).mode & 0o777, 0o600);
     assert.equal((await invoke('stop-background')).status, 'stopped'); started = false;
     await assert.rejects(readFile(path.join(root, 'owner.lock')), { code: 'ENOENT' });
     assert.equal((await invoke('stop-background')).status, 'stopped');
@@ -39,8 +41,9 @@ test('detached owner survives launcher exit, duplicate start reuses owner, verif
 });
 
 
-test('owner survives executor process-group termination; wrong stop binding is rejected', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-executor-');
+// Process groups and negative-PID signals are POSIX-only.
+test('owner survives executor process-group termination; wrong stop binding is rejected', { skip: process.platform === 'win32' }, async () => {
+  const root = await tempRoot('jobdesk-executor-');
   const cli = fileURLToPath(new URL('./cli.ts', import.meta.url));
   const cwd = fileURLToPath(new URL('../../', import.meta.url));
   const env = { ...process.env, JOBDESK_DATA_DIR: root, JOBDESK_PORT: '0' };
@@ -67,13 +70,13 @@ test('owner survives executor process-group termination; wrong stop binding is r
     process.kill(-wrapper.pid!, 'SIGTERM');
     await exited; wrapperStopped = true;
     process.kill(first.pid, 0);
-    assert.equal((await brokerCall('health', [], path.join(root, 'broker.sock'))).ok, true);
+    assert.equal((await brokerCall('health', [], brokerEndpoint(root))).ok, true);
     const recordPath = path.join(root, 'owner-process.json');
     const record = await readFile(recordPath, 'utf8');
     await writeFile(recordPath, JSON.stringify({ pid: first.pid, hash: 'wrong-binding' }));
     await assert.rejects(run(process.execPath, ['--import','tsx',cli,'stop-background'],
       { cwd, env, timeout: 30_000 }), /Owner changed/);
-    assert.equal((await brokerCall('health', [], path.join(root, 'broker.sock'))).ok, true);
+    assert.equal((await brokerCall('health', [], brokerEndpoint(root))).ok, true);
     await writeFile(recordPath, record);
     await run(process.execPath, ['--import','tsx',cli,'stop-background'], { cwd, env, timeout: 30_000 });
     started = false;

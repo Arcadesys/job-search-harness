@@ -1,35 +1,38 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { JobdeskStore } from './store';
 import { createService, initializeService } from './service';
 import {
   runDailySearch,
   saveSearchQueries,
-  DEFAULT_SEARCHES,
+  listSearchQueries,
   leadIdForUrl,
 } from '../../lib/job-discovery';
 import { assessAndDraft, MONTHLY_AI_BUDGET_USD } from '../../lib/job-drafting';
-import { centralDate, getReviewWeeks, listWeeklyReview } from '../../lib/jobs-review';
+import { openaiProvider } from '../../lib/drafting-openai';
+import { localDate, getReviewWeeks, listWeeklyReview } from '../../lib/jobs-review';
+import { tempRoot } from '../../tests/fixtures/temp-root';
+import { loadSample } from '../../tests/fixtures/sample-resume';
 
 test('real SQL budgets, successful scan dedupe, failed/unmeasured provider calls and Chicago daylight saving', async () => {
-  const root = await mkdtemp('/tmp/jobdesk-domain-');
+  const root = await tempRoot('jobdesk-domain-');
   const store = await JobdeskStore.open(root);
-  const oldFetch = globalThis.fetch,
-    oldKey = process.env.OPENAI_API_KEY;
+  const oldFetch = globalThis.fetch;
   try {
     await initializeService(store);
+    await loadSample(store);
     const call = createService(store);
     const sql = store.sql;
     await saveSearchQueries(
-      DEFAULT_SEARCHES.map((query) => ({
-        id: query.id,
-        query: query.query,
-        feedUrl: query.id === 'ai-chicago' ? 'https://www.google.com/alerts/feeds/1/2' : '',
-        enabled: query.id === 'ai-chicago',
-      })),
+      [
+        { lane: 'Data analyst', location: 'Remote', query: 'remote data analyst jobs', feedUrl: 'https://www.google.com/alerts/feeds/1/2', enabled: true },
+        { lane: 'Data analyst', location: 'Remote', query: 'remote analytics engineer jobs', feedUrl: '', enabled: false },
+      ],
       sql,
     );
+    assert.deepEqual((await listSearchQueries(sql)).map((row) => row.id), ['data-analyst-remote', 'data-analyst-remote-2'],
+      'new searches get readable, unique IDs');
     let polls = 0;
     const fetcher = async () => {
       polls++;
@@ -49,10 +52,12 @@ test('real SQL budgets, successful scan dedupe, failed/unmeasured provider calls
     const capped = await runDailySearch({ sql, fetcher, now: new Date('2026-11-02T00:00:00Z') });
     assert.equal(capped.status, 'failed');
     assert.equal(polls, 1);
+    const openai = openaiProvider('synthetic-test-only-never-sent', 'gpt-6-luna');
     const url = 'https://example.test/jobs/draft-fixture',
       id = leadIdForUrl(url);
     await call({ method: 'leads.add', args: [{ url, title: 'Budget test fixture' }] });
-    assert.equal((await assessAndDraft(id, sql)).blocked, true);
+    assert.equal((await assessAndDraft(id, sql, openai)).blocked, true);
+    assert.match(((await assessAndDraft(id, sql, null)) as { reason: string }).reason, /Original posting/, 'evidence checks come before provider checks');
     await call({
       method: 'draft.posting',
       args: [
@@ -61,7 +66,7 @@ test('real SQL budgets, successful scan dedupe, failed/unmeasured provider calls
         'Synthetic source note; no real employer.',
       ],
     });
-    assert.equal((await assessAndDraft(id, sql)).blocked, true);
+    assert.equal((await assessAndDraft(id, sql, openai)).blocked, true);
     const claims = (await call({ method: 'truth.list', args: [] })) as any[];
     await call({
       method: 'truth.review',
@@ -73,7 +78,6 @@ test('real SQL budgets, successful scan dedupe, failed/unmeasured provider calls
         },
       ],
     });
-    process.env.OPENAI_API_KEY = 'synthetic-test-only-never-sent';
     let requests = 0;
     globalThis.fetch = async () => {
       requests++;
@@ -93,13 +97,13 @@ test('real SQL budgets, successful scan dedupe, failed/unmeasured provider calls
         ],
       });
     };
-    const drafted = await assessAndDraft(id, sql);
+    const drafted = await assessAndDraft(id, sql, openai);
     assert.equal(drafted.blocked, false);
     assert.equal(requests, 1);
     const usage = (await sql`SELECT * FROM job_ai_usage`)[0];
     assert.equal(Number(usage.estimated_usd), MONTHLY_AI_BUDGET_USD);
     assert.equal(usage.unknown_cost_requests, 1);
-    await assert.rejects(assessAndDraft(id, sql), /budget/);
+    await assert.rejects(assessAndDraft(id, sql, openai), /budget/);
     assert.equal(requests, 1);
     const draft = (await sql`SELECT * FROM job_application_drafts WHERE lead_id=${id}`)[0];
     assert.equal(draft.truth_snapshot.length, 1);
@@ -111,30 +115,29 @@ test('real SQL budgets, successful scan dedupe, failed/unmeasured provider calls
       requests++;
       throw new Error('Synthetic definite provider failure');
     };
-    await assert.rejects(assessAndDraft(id, sql), /Synthetic/);
+    await assert.rejects(assessAndDraft(id, sql, openai), /Synthetic/);
     assert.equal(
       (await sql`SELECT unknown_cost_requests FROM job_ai_usage`)[0].unknown_cost_requests,
       1,
     );
-    assert.equal(centralDate(new Date('2026-03-08T05:59:00Z')), '2026-03-07');
-    assert.equal(centralDate(new Date('2026-03-08T08:00:00Z')), '2026-03-08');
-    assert.equal(centralDate(new Date('2026-11-01T06:59:00Z')), '2026-11-01');
-    assert.equal(centralDate(new Date('2026-11-01T07:01:00Z')), '2026-11-01');
+    assert.equal(localDate(new Date('2026-03-08T05:59:00Z'), 'America/Chicago'), '2026-03-07');
+    assert.equal(localDate(new Date('2026-03-08T08:00:00Z'), 'America/Chicago'), '2026-03-08');
+    assert.equal(localDate(new Date('2026-11-01T06:59:00Z'), 'America/Chicago'), '2026-11-01');
+    assert.equal(localDate(new Date('2026-11-01T07:01:00Z'), 'America/Chicago'), '2026-11-01');
     const weeks = getReviewWeeks('2026-11-01', 2);
     assert.deepEqual(weeks, ['2026-10-19', '2026-10-26']);
-    assert.equal((await listWeeklyReview(weeks, sql)).length, 2);
+    assert.equal((await listWeeklyReview(weeks, sql, 'America/Chicago')).length, 2);
     // A crashed owner's durable model marker closes its recorded month's cap.
     await sql`UPDATE job_ai_usage SET estimated_usd=0,unknown_cost_requests=0`;
     await sql`INSERT INTO jobdesk_model_runs(id,usage_month,state) VALUES(gen_random_uuid(),date_trunc('month',now())::date,'pending')`;
     await initializeService(store);
+    await loadSample(store);
     assert.equal(
       (await sql`SELECT unknown_cost_requests FROM job_ai_usage`)[0].unknown_cost_requests,
       1,
     );
   } finally {
     globalThis.fetch = oldFetch;
-    if (oldKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = oldKey;
     await store.close();
     await rm(root, { recursive: true, force: true });
   }

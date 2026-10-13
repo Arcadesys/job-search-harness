@@ -1,56 +1,15 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { hostedJobSql, type Sql } from './job-storage';
-import { canAccessJobs, configuredGithubAccountIds } from '@/lib/jobs-access';
+import { randomUUID } from 'node:crypto';
+import type { Sql } from './job-storage';
 
 export const BATCH_ITEM_STATUSES = ['queued', 'preparing', 'awaiting_approval', 'submitted', 'blocked', 'skipped'] as const;
 export type BatchItemStatus = typeof BATCH_ITEM_STATUSES[number];
 
-const db = hostedJobSql;
-
-export function hashMcpToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
-}
-
-export function newMcpToken(): { token: string; id: string } {
-  return { token: `jobdesk_${randomBytes(32).toString('base64url')}`, id: randomUUID() };
-}
-
-export function bearerToken(request: Request): string | null {
-  const value = request.headers.get('authorization') ?? '';
-  const match = /^Bearer (jobdesk_[A-Za-z0-9_-]{43})$/.exec(value);
-  return match?.[1] ?? null;
-}
 
 export function validBatchStatus(value: unknown): value is BatchItemStatus {
   return typeof value === 'string' && (BATCH_ITEM_STATUSES as readonly string[]).includes(value);
 }
 
-export async function issueMcpToken(ownerId: string, label: string, sql: Sql = db()) {
-  const { token, id } = newMcpToken();
-  const cleanLabel = label.trim().slice(0, 80) || 'Local job-hunt MCP';
-  const rows = await sql`INSERT INTO job_mcp_tokens (id,owner_id,label,token_hash,expires_at)
-    VALUES (${id},${ownerId},${cleanLabel},${hashMcpToken(token)},now()+interval '90 days')
-    RETURNING id,label,expires_at AS "expiresAt",created_at AS "createdAt"`;
-  return { metadata: rows[0], token };
-}
-
-export async function listMcpTokens(ownerId: string, sql: Sql = db()) {
-  return await sql`SELECT id,label,expires_at AS "expiresAt",expires_at<=now() AS expired,revoked_at AS "revokedAt",created_at AS "createdAt"
-    FROM job_mcp_tokens WHERE owner_id=${ownerId} ORDER BY created_at DESC`;
-}
-
-export async function revokeMcpToken(ownerId: string, id: string, sql: Sql = db()) {
-  await sql`UPDATE job_mcp_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE owner_id=${ownerId} AND id=${id}`;
-}
-
-export async function authenticateMcpToken(token: string, sql: Sql = db(), allowlist = configuredGithubAccountIds()): Promise<string | null> {
-  const rows = await sql`SELECT owner_id AS "ownerId" FROM job_mcp_tokens
-    WHERE token_hash=${hashMcpToken(token)} AND revoked_at IS NULL AND expires_at>now() LIMIT 1`;
-  const ownerId = rows[0]?.ownerId;
-  return typeof ownerId === 'string' && canAccessJobs(ownerId, allowlist) ? ownerId : null;
-}
-
-export async function createApplicationBatch(ownerId: string, leadIds: string[], sql: Sql = db()) {
+export async function createApplicationBatch(ownerId: string, leadIds: string[], sql: Sql) {
   const selected = [...new Set(leadIds.filter((id) => /^[a-f0-9]{64}$/.test(id)))];
   if (!selected.length || selected.length > 30) throw new Error('Select between 1 and 30 pursued leads.');
   const id = randomUUID();
@@ -83,7 +42,7 @@ export async function createApplicationBatch(ownerId: string, leadIds: string[],
   return { id, count: rows.length };
 }
 
-export async function listApplicationBatches(ownerId: string, sql: Sql = db()) {
+export async function listApplicationBatches(ownerId: string, sql: Sql) {
   return await sql`SELECT b.id,(s.batch_id=b.id) AS "isSelected",b.created_at AS "createdAt",COUNT(i.id)::int AS "itemCount",
       COUNT(*) FILTER (WHERE i.status='queued')::int AS queued,
       COUNT(*) FILTER (WHERE i.status='preparing')::int AS preparing,
@@ -96,7 +55,7 @@ export async function listApplicationBatches(ownerId: string, sql: Sql = db()) {
     WHERE b.owner_id=${ownerId} GROUP BY b.id,s.batch_id ORDER BY (s.batch_id=b.id) DESC,b.created_at DESC LIMIT 50`;
 }
 
-export async function selectApplicationBatch(ownerId: string, batchId: string, sql: Sql = db()) {
+export async function selectApplicationBatch(ownerId: string, batchId: string, sql: Sql) {
   const rows = await sql`INSERT INTO job_application_batch_selections (owner_id,batch_id)
     SELECT ${ownerId},b.id FROM job_application_batches b WHERE b.id=${batchId} AND b.owner_id=${ownerId}
     ON CONFLICT (owner_id) DO UPDATE SET batch_id=EXCLUDED.batch_id,selected_at=now()
@@ -104,7 +63,7 @@ export async function selectApplicationBatch(ownerId: string, batchId: string, s
   return rows[0] ?? null;
 }
 
-export async function listEligiblePursuedLeads(ownerId: string, sql: Sql = db()) {
+export async function listEligiblePursuedLeads(ownerId: string, sql: Sql) {
   return await sql`SELECT l.id,l.title,l.organization FROM job_leads l
     WHERE l.decision='keep' AND l.application_stage IS DISTINCT FROM 'applied' AND NOT EXISTS (
       SELECT 1 FROM job_application_batch_items i
@@ -112,7 +71,7 @@ export async function listEligiblePursuedLeads(ownerId: string, sql: Sql = db())
     ) ORDER BY l.discovered_at DESC LIMIT 500`;
 }
 
-export async function listApplicationBatchItems(ownerId: string, batchId: string, sql: Sql = db()) {
+export async function listApplicationBatchItems(ownerId: string, batchId: string, sql: Sql) {
   return await sql`SELECT i.id AS "itemId",i.lead_id AS "leadId",i.status,i.note,i.created_at AS "createdAt",i.updated_at AS "updatedAt",
       l.title,l.organization,l.location,l.source_url AS "sourceUrl",l.verification_status AS "verificationStatus",l.decision
     FROM job_application_batches b JOIN job_application_batch_items i ON i.batch_id=b.id AND i.owner_id=b.owner_id
@@ -120,7 +79,7 @@ export async function listApplicationBatchItems(ownerId: string, batchId: string
     ORDER BY i.created_at,i.id`;
 }
 
-export async function readApplicationBatchItem(ownerId: string, itemId: string, sql: Sql = db()) {
+export async function readApplicationBatchItem(ownerId: string, itemId: string, sql: Sql) {
   const items = await sql`SELECT i.id AS "itemId",i.batch_id AS "batchId",i.lead_id AS "leadId",i.status,i.note,
       l.title,l.organization,l.location,l.source_url AS "sourceUrl",l.snippet,l.posting_text AS "postingText",
       l.posting_source_note AS "postingSourceNote",l.verification_status AS "verificationStatus",l.decision,
@@ -134,7 +93,7 @@ export async function readApplicationBatchItem(ownerId: string, itemId: string, 
   return { ...items[0], reviewedTruths: truths };
 }
 
-export async function updateApplicationBatchItem(ownerId: string, itemId: string, status: BatchItemStatus, note: string, sql: Sql = db()) {
+export async function updateApplicationBatchItem(ownerId: string, itemId: string, status: BatchItemStatus, note: string, sql: Sql) {
   if (status === 'submitted') throw new Error('Record a confirmed submission with the receipt endpoint.');
   const rows = await sql`UPDATE job_application_batch_items i SET status=${status},note=${note.slice(0,1000)},updated_at=now()
     WHERE i.id=${itemId} AND i.owner_id=${ownerId} AND i.status<>'submitted'
@@ -144,7 +103,7 @@ export async function updateApplicationBatchItem(ownerId: string, itemId: string
 
 export async function recordApplicationReceipt(ownerId: string, itemId: string, input: {
   idempotencyKey: string; confirmation: string; confirmationUrl?: string;
-}, sql: Sql = db()) {
+}, sql: Sql, timeZone: string) {
   const idempotencyKey = input.idempotencyKey.trim();
   const confirmation = input.confirmation.trim();
   const confirmationUrl = input.confirmationUrl?.trim() ?? '';
@@ -172,7 +131,7 @@ export async function recordApplicationReceipt(ownerId: string, itemId: string, 
       SELECT * FROM saved UNION ALL SELECT * FROM existing
     ), event AS (
       INSERT INTO job_review_events (lead_id,event_type,occurred_on,note)
-      SELECT owned.lead_id,'application',(chosen.confirmed_at AT TIME ZONE 'America/Chicago')::date,
+      SELECT owned.lead_id,'application',(chosen.confirmed_at AT TIME ZONE ${timeZone})::date,
         'Browser confirmation recorded by the local job-hunt workflow.'
       FROM owned JOIN chosen ON chosen.item_id=owned.id
       JOIN saved ON saved.item_id=owned.id

@@ -13,10 +13,22 @@ import { bootstrap, privateBootstrap } from './bootstrap';
 import type { JobdeskStore } from './store';
 import { readSubmissionDraft } from './submission-draft';
 import { JobdeskError } from './errors';
-import { reconcileHostedTruth } from './truth-reconciliation';
 import { saveManualDraft } from './manual-draft';
+import { draftingModel, readSettings, readTimeZone, saveSettings } from '../../lib/jobdesk-settings';
+import { openaiProvider } from '../../lib/drafting-openai';
+import { anthropicProvider } from '../../lib/drafting-anthropic';
+import { apiKeyFor, apiKeyStatus, saveApiKey } from './secrets';
 
 export const LOCAL_OWNER = 'local-user';
+
+/** Import messages are written for the person importing; let them through. */
+async function userFacing<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    throw new JobdeskError('IMPORT_REJECTED', error instanceof Error ? error.message : 'Import failed.');
+  }
+}
 function operation<S extends z.ZodType>(
   schema: S,
   handler: (args: z.infer<S>, sql: Sql) => Promise<unknown>,
@@ -40,6 +52,15 @@ export async function initializeService(store: JobdeskStore) {
 
 export function createService(store: JobdeskStore) {
   const schemas = methodSchemas;
+  /** null when the user has not turned on drafting or has no key for the chosen provider. */
+  const assessmentProvider = async (sql: Sql) => {
+    const { drafting } = await readSettings(sql);
+    if (drafting.provider === 'none') return null;
+    const key = await apiKeyFor(store.root, drafting.provider);
+    if (!key) return null;
+    const model = draftingModel(drafting);
+    return drafting.provider === 'openai' ? openaiProvider(key, model) : anthropicProvider(key, model);
+  };
   const operations = {
     health: operation(schemas.health, async (_, sql) => ({
       ok: true,
@@ -57,8 +78,11 @@ export function createService(store: JobdeskStore) {
     'truth.addProject': operation(schemas['truth.addProject'], ([input], sql) =>
       truths.addProjectTruth(input, sql),
     ),
-    'truth.reconcileHosted': operation(schemas['truth.reconcileHosted'], ([input], sql) =>
-      reconcileHostedTruth(input, sql),
+    'truth.importResume': operation(schemas['truth.importResume'], ([input], sql) =>
+      userFacing(() => truths.importResume(input, sql)),
+    ),
+    'truth.importText': operation(schemas['truth.importText'], ([text, note], sql) =>
+      userFacing(() => truths.importResumeText(text, note, sql)),
     ),
     'leads.list': operation(schemas['leads.list'], (_, sql) => discovery.listLeads(sql)),
     'leads.add': operation(schemas['leads.add'], ([input], sql) =>
@@ -97,7 +121,7 @@ export function createService(store: JobdeskStore) {
       await sql`UPDATE jobdesk_artifacts SET approval_state='superseded' WHERE lead_id=${id}`;
       await sql`INSERT INTO jobdesk_model_runs(id,usage_month,state) VALUES(${runId},date_trunc('month',now())::date,'pending')`;
       try {
-        return await drafting.assessAndDraft(id, sql);
+        return await drafting.assessAndDraft(id, sql, await assessmentProvider(sql));
       } finally {
         await sql`UPDATE jobdesk_model_runs SET state='finished' WHERE id=${runId}`;
       }
@@ -197,21 +221,32 @@ export function createService(store: JobdeskStore) {
       if (!attemptId) throw new Error('A durable submission attempt is required.');
       return leases.confirmSubmission(LOCAL_OWNER, { ...input, attemptId }, sql);
     }),
-    'review.read': operation(schemas['review.read'], async (_, sql) => ({
-      weeks: await review.listWeeklyReview(review.getReviewWeeks(), sql),
+    'review.read': operation(schemas['review.read'], async (_, sql) => {
+      const timeZone = await readTimeZone(sql);
+      return {
+      weeks: await review.listWeeklyReview(review.getReviewWeeks(review.localDate(new Date(), timeZone)), sql, timeZone),
       leads: await review.listReviewLeads(sql),
       outcomes: await review.listSiteOutcomes(sql),
       reports: await sql`SELECT * FROM jobdesk_user_reports ORDER BY id`,
-    })),
-    'review.event': operation(schemas['review.event'], ([input], sql) =>
-      review.recordReviewEvent(input, sql),
+      };
+    }),
+    'review.event': operation(schemas['review.event'], async ([input], sql) =>
+      review.recordReviewEvent(input, sql, await readTimeZone(sql)),
     ),
     'review.complete': operation(schemas['review.complete'], ([date], sql) =>
       review.markReviewWeekComplete(date, sql),
     ),
-    'review.outcome': operation(schemas['review.outcome'], ([input], sql) =>
-      review.recordSiteOutcome(input, sql),
+    'review.outcome': operation(schemas['review.outcome'], async ([input], sql) =>
+      review.recordSiteOutcome(input, sql, await readTimeZone(sql)),
     ),
+    'settings.read': operation(schemas['settings.read'], async (_, sql) => ({
+      ...(await readSettings(sql)), apiKeys: await apiKeyStatus(store.root),
+    })),
+    'settings.saveApiKey': operation(schemas['settings.saveApiKey'], async ([provider, key]) => {
+      await userFacing(() => saveApiKey(store.root, provider, key));
+      return { saved: Boolean(key.trim()) };
+    }),
+    'settings.save': operation(schemas['settings.save'], ([input], sql) => saveSettings(input, sql)),
     'review.removeOutcome': operation(schemas['review.removeOutcome'], ([id], sql) =>
       review.removeSiteOutcome(id, sql),
     ),
@@ -222,11 +257,11 @@ export function createService(store: JobdeskStore) {
       schemas.backup.parse(args);
       return store.backup();
     }
-    if (method === 'browser.open')
-      throw new Error('Browser launch requires the foreground server.');
+    if (method === 'browser.open' || method === 'owner.shutdown')
+      throw new Error('This operation requires the owner process connection.');
     const handler = operations[method];
     return store.run((sql) =>
-      ['truth.addProject', 'truth.reconcileHosted', 'submission.record', 'draft.edit', 'draft.saveManual', 'draft.approve', 'submission.begin', 'submission.notSubmitted'].includes(method)
+      ['truth.addProject', 'truth.importResume', 'truth.importText', 'search.save', 'submission.record', 'draft.edit', 'draft.saveManual', 'draft.approve', 'submission.begin', 'submission.notSubmitted'].includes(method)
         ? store.db.transaction((tx) => handler(args, parameterizedSql(tx)))
         : handler(args, sql),
     );

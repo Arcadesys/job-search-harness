@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
@@ -38,7 +38,11 @@ export function defaultDataRoot({
  * where pipes live in a global namespace and are keyed by the data root. */
 export function brokerEndpoint(root, { platform = process.platform } = {}) {
   if (platform === 'win32') {
-    const key = createHash('sha256').update(path.win32.resolve(root).toLowerCase()).digest('hex');
+    // The owner and its clients may spell the same folder differently (8.3 short
+    // names, case), so key the pipe by the folder's real, case-folded path.
+    let canonical = path.win32.resolve(root);
+    try { canonical = realpathSync.native(canonical); } catch { /* not created yet, or another platform's path */ }
+    const key = createHash('sha256').update(canonical.toLowerCase()).digest('hex');
     return `\\\\.\\pipe\\job-search-harness-${key.slice(0, 24)}`;
   }
   return path.posix.join(root, 'broker.sock');

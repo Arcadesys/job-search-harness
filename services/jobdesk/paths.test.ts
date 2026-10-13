@@ -58,3 +58,18 @@ test('the open command uses each platform’s own browser launcher, never a shel
   assert.deepEqual(browserCommand(url, 'win32'), ['rundll32', ['url.dll,FileProtocolHandler', url]]);
   assert.deepEqual(browserCommand(url, 'linux'), ['xdg-open', [url]]);
 });
+
+test('on Windows, every spelling of the data folder reaches the same pipe', { skip: process.platform !== 'win32' }, async () => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { realpathSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const root = await mkdtemp(path.join(tmpdir(), 'jsh-pipe-'));
+  try {
+    const pipe = brokerEndpoint(root);
+    assert.equal(brokerEndpoint(realpathSync.native(root)), pipe, 'short (8.3) and long names agree');
+    assert.equal(brokerEndpoint(root.toUpperCase()), pipe, 'case does not matter');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

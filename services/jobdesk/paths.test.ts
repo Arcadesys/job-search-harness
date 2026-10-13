@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { brokerEndpoint, clientEndpoint, defaultDataRoot, legacyRoots } from './paths.mjs';
+import { browserCommand, brokerEndpoint, clientEndpoint, defaultDataRoot, legacyRoots } from './paths.mjs';
 import { inSyncedFolder } from './store';
 
 const none = () => false;
@@ -50,4 +50,11 @@ test('synced folders are refused on every platform', () => {
   ]) assert.equal(inSyncedFolder(candidate), true, candidate);
   for (const candidate of ['/Users/sam/Library/Application Support/Job Search Harness', 'C:\\Users\\Sam\\AppData\\Local\\Job Search Harness'])
     assert.equal(inSyncedFolder(candidate), false, candidate);
+});
+
+test('the open command uses each platform’s own browser launcher, never a shell', () => {
+  const url = 'http://127.0.0.1:4317/#ticket=abc_DEF-123';
+  assert.deepEqual(browserCommand(url, 'darwin'), ['/usr/bin/open', [url]]);
+  assert.deepEqual(browserCommand(url, 'win32'), ['rundll32', ['url.dll,FileProtocolHandler', url]]);
+  assert.deepEqual(browserCommand(url, 'linux'), ['xdg-open', [url]]);
 });

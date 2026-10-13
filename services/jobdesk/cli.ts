@@ -5,6 +5,7 @@ import path from 'node:path';
 import { brokerCall } from './client';
 import { JobdeskStore, DEFAULT_ROOT, recoverOwnerLock, PGLITE_VERSION } from './store';
 import { startDetachedOwner, stopDetachedOwner } from './owner-launch';
+import { browserCommand } from './paths.mjs';
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
@@ -18,8 +19,9 @@ async function main() {
   }
   if (command === 'open') {
     const { url } = await brokerCall('browser.open', []);
+    const [program, args] = browserCommand(url);
     await new Promise<void>((resolve, reject) =>
-      execFile('/usr/bin/open', [url], { env: process.env }, (error) =>
+      execFile(program, args, { env: process.env }, (error) =>
         error ? reject(error) : resolve(),
       ),
     );

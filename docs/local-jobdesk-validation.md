@@ -1,5 +1,7 @@
 # Local Jobdesk validation
 
+> Historical working record, kept for provenance. It predates the split from the portfolio site, so it mentions the retired hosted mode and a single user's data. Current behavior is described in [local-jobdesk.md](local-jobdesk.md).
+
 Validated on the selected Mac, 1 October 2026, from an isolated checkout based on
 `193fc7b858caf4c8ace307bdbecde047230f9ac8`. PGlite is pinned to 0.5.8. Tests use
 temporary private directories, synthetic employer records, mocked feed/model

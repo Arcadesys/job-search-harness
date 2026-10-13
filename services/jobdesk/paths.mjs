@@ -48,3 +48,10 @@ export function brokerEndpoint(root, { platform = process.platform } = {}) {
 export function clientEndpoint({ env = process.env, platform = process.platform } = {}) {
   return env.JOBDESK_SOCKET || brokerEndpoint(defaultDataRoot({ env, platform }), { platform });
 }
+
+/** The system command that opens a URL in the default browser, without a shell. */
+export function browserCommand(url, platform = process.platform) {
+  if (platform === 'darwin') return ['/usr/bin/open', [url]];
+  if (platform === 'win32') return ['rundll32', ['url.dll,FileProtocolHandler', url]];
+  return ['xdg-open', [url]];
+}

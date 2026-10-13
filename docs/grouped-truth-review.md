@@ -1,5 +1,7 @@
 # Grouped résumé truth review
 
+> Historical working record, kept for provenance. It predates the split from the portfolio site, so it mentions the retired hosted mode and a single user's data. Current behavior is described in [local-jobdesk.md](local-jobdesk.md).
+
 ## Working checkpoint
 
 - Route: implement the approved Concept B plan in one coordinator context; the page, data contract, and verification stay together. No delegation.

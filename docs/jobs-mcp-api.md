@@ -1,22 +1,36 @@
-# Local job-hunt MCP API
+# MCP tools
 
-The hosted contract below remains available for rollback. The reviewed local
-replacement and foreground setup are described in [local-jobdesk.md](local-jobdesk.md).
-The local adapter preserves these five operations through a private Unix broker;
-it does not import hosted bearer tokens or bypass the web application's OAuth.
+`services/jobdesk/mcp-server.mjs` is a dependency-free stdio MCP server. It
+talks only to the local owner over its private broker, never opens the
+database, and has no network fallback: if the jobdesk is not running, every
+tool fails with that message. Only JSON-RPC is written to stdout. None of these
+tools submits anything to an employer.
 
-This private API is the narrow data interface for the local stdio MCP client. It never submits an application to an employer. Every route requires `Authorization: Bearer <token>`, rechecks the token expiry and revocation state, verifies that its owner is still in `JOBS_GITHUB_ACCOUNT_IDS`, enforces owner-scoped batch membership, and returns `Cache-Control: private, no-store`.
+## Setup
 
-Tokens are created and revoked in the GitHub-allowlisted `/jobs/settings` page. A new token expires after 90 days, is stored only as a SHA-256 hash, and is returned to the browser once. Copy it to the local Mac Keychain flow; never put it in project files or logs.
+| Tool | What it does |
+| --- | --- |
+| `job_hunt_setup_status` | Counts truths (total, reviewed, unreviewed), searches and feeds, reports the time zone, and names the next step. |
+| `job_hunt_import_resume` | First import of the user's own résumé, copied verbatim and grouped by role. Fails without changes once any truth exists. Every claim arrives unreviewed. |
+| `job_hunt_add_resume_text` | Adds more claims, one per line; wording already present is skipped. |
 
-## Endpoints
+## Applying
 
-- `GET /api/jobs/mcp/batches` returns `{ selectedBatchId, batches }`. Every batch has `id`, `isSelected`, `createdAt`, `itemCount`, and counts for each item state. The selected batch is returned even when it is older than the 50-batch history window.
-- `GET /api/jobs/mcp/batches/{batchId}/items` returns the owner's items with lead title, organization, location, source URL, verification state, and queue status.
-- `GET /api/jobs/mcp/items/{itemId}` returns the owner's lead, the saved résumé/outreach draft when present, and reviewed résumé truths.
-- `PATCH /api/jobs/mcp/items/{itemId}` accepts `{ "status": "queued|preparing|awaiting_approval|blocked|skipped", "note"?: "..." }`. The API does not accept `submitted` through this route.
-- `POST /api/jobs/mcp/items/{itemId}/submission` accepts `{ "idempotencyKey": "...", "confirmation": "...", "confirmationUrl"?: "https://..." }`. It saves one receipt per item, marks the item submitted, changes the lead stage to applied, and adds a weekly application event in the same database statement. Retrying with the same key returns the same receipt; a different receipt for the item is rejected.
+| Tool | What it does |
+| --- | --- |
+| `job_hunt_list_batches` | The user's application batches and which one is selected, with counts per state. |
+| `job_hunt_list_batch_items` | Items in a batch: role, organization, location, source URL, verification and status. |
+| `job_hunt_get_item` | One item with its saved draft, the draft's approval, `draftVersion` and `draftHash`, and the user's reviewed truths. |
+| `job_hunt_update_item_status` | `preparing` (claims the lease), `awaiting_approval`, `blocked` or `skipped`, with a note. It cannot mark an item submitted. |
+| `job_hunt_renew_lease` | Keeps the preparation lease alive; a stale worker cannot write. |
+| `job_hunt_begin_submission` | Records a durable attempt bound to the exact approved draft (`draftVersion`, `draftHash`) immediately before the user's employer action. Refused if the draft changed. |
+| `job_hunt_mark_submission_uncertain` | Blocks an interrupted attempt for reconciliation. |
+| `job_hunt_record_submission` | After the employer's confirmation is seen, saves one receipt per item (idempotent by key), marks it submitted and counts it in the weekly review. |
 
-The `confirmation` is the worker's report of the confirmation shown in the employer's browser after submission. The server cannot independently verify the employer's system. The MCP worker must inspect that browser confirmation before calling this endpoint. Weekly application counts use these saved receipts only; historical manually entered application events remain stored but are not counted as confirmed submissions. There is no ATS submit endpoint.
+The receipt is the worker's report of what the employer showed; the jobdesk
+cannot see the employer's system. A timeout, restart or ambiguous response
+leaves the attempt uncertain, and the item cannot be claimed, requeued or
+batched again until the user reconciles it in the cockpit.
 
-Responses are JSON. Invalid input returns 400, missing/invalid/expired/revoked credentials return 401, owner-inaccessible records return 404, and storage or idempotency conflicts return 409 or 503 as applicable.
+Lease, draft-binding and receipt rules are described in
+[local-jobdesk.md](local-jobdesk.md#drafts-and-submissions).

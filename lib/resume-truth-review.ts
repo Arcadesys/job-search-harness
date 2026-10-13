@@ -3,6 +3,12 @@ import type { TruthClaim } from './resume-truth';
 
 export const truthStatuses = ['unreviewed', 'reviewed', 'rejected'] as const;
 export type TruthStatus = typeof truthStatuses[number];
+export const projectTruthSchema = z.object({
+  slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(120),
+  claim: z.string().trim().min(1).max(4000),
+  sourceNote: z.string().trim().min(1).max(1000),
+}).strict();
+export type ProjectTruthInput = z.infer<typeof projectTruthSchema>;
 export const reviewBatchSchema = z.object({
   changes: z.array(z.object({
     id: z.string().min(1).max(200),

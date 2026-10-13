@@ -1,5 +1,5 @@
 import { hostedJobSql, type Sql } from './job-storage';
-import { reviewBatchSchema, type TruthChange, type ReviewClaim } from './resume-truth-review';
+import { projectTruthSchema, reviewBatchSchema, type ProjectTruthInput, type TruthChange, type ReviewClaim } from './resume-truth-review';
 import truthSeeds from './resume-truth-seeds.json';
 
 export type TruthClaim = {
@@ -70,6 +70,32 @@ export async function saveResumeTruth(claim: TruthClaim, sql: Sql = getSql()): P
 export async function listResumeTruthVersions(id: string, sql: Sql = getSql()): Promise<TruthVersion[]> {
   const rows = await sql`SELECT claim_id AS id, claim, source_note AS "sourceNote", review_status AS "reviewStatus", created_at AS "createdAt" FROM resume_truth_versions WHERE claim_id = ${id} ORDER BY created_at DESC, id DESC`;
   return rows as TruthVersion[];
+}
+
+/** Called inside the local owner's transaction. Additions never inherit approval. */
+export async function addProjectTruth(raw: ProjectTruthInput, sql: Sql): Promise<{ created: boolean; claim: ReviewClaim }> {
+  const input = projectTruthSchema.parse(raw);
+  const id = `project.${input.slug}`;
+  const existing = await sql`SELECT id, claim, source_note AS "sourceNote", review_status AS "reviewStatus",
+    updated_at AS "updatedAt", updated_at::text AS version FROM resume_truth_claims
+    WHERE id=${id} OR lower(regexp_replace(btrim(claim), '[[:space:]]+', ' ', 'g'))=
+      lower(regexp_replace(btrim(${input.claim}), '[[:space:]]+', ' ', 'g'))`;
+  if (existing.length) {
+    const same = existing.find((row) => row.id === id);
+    if (existing.length === 1 && same?.claim === input.claim && same.sourceNote === input.sourceNote)
+      return { created: false, claim: same as ReviewClaim };
+    throw new Error('Project truth already exists with a different ID, wording or source. No records changed.');
+  }
+  const rows = await sql`WITH added AS (
+    INSERT INTO resume_truth_claims (id, claim, source_note, review_status)
+    VALUES (${id},${input.claim},${input.sourceNote},'unreviewed')
+    RETURNING id, claim, source_note AS "sourceNote", review_status AS "reviewStatus",
+      updated_at AS "updatedAt", updated_at::text AS version
+  ), history AS (
+    INSERT INTO resume_truth_versions (claim_id, claim, source_note, review_status)
+    SELECT id, claim, "sourceNote", "reviewStatus" FROM added RETURNING id
+  ) SELECT added.*, (SELECT count(*) FROM history) AS "recordedVersions" FROM added`;
+  return { created: true, claim: rows[0] as ReviewClaim };
 }
 
 

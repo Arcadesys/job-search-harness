@@ -94,6 +94,23 @@ requests while in flight.
 
 ## Fresh-start facts and reviews
 
+The private owner also supports explicit `truth.reconcileHosted` recovery of a
+user-supplied export. It checks the exact export SHA-256, unique stable IDs and
+expected local versions/content before recovering only exported reviewed or
+rejected decisions. Unreviewed source records and unrelated local records stay
+unchanged. A conflict rejects the entire transaction. Original source notes,
+opaque source versions, origin, export hash and file reference are retained in
+provenance; local versions are newly generated and prior history is preserved.
+Identical retries append no history. Take a supported backup before recovery.
+This operation has no network access and never writes to the hosted store.
+
+The local broker supports `truth.addProject` with `{ slug, claim, sourceNote }`.
+It derives `project.<slug>`, validates nonblank wording/provenance, and atomically
+adds an unreviewed record and its first immutable version. Identical retries return
+the existing record without changing its approval or history. Conflicting IDs or
+duplicate wording are rejected. This is insert-only; existing truths and review
+decisions are preserved. Use `truth.list` and `truth.versions` for read-back.
+
 All baseline résumé claims start unreviewed, with source notes. Approvals are not
 inherited from the hosted database. Claim versions, stale-batch conflicts,
 independent duplicate wording, and saved draft snapshots are retained. Changed
@@ -173,3 +190,45 @@ rejected. Do not delete locks while workers are active.
    backend is a dated snapshot; never overwrite local state from it automatically.
 
 See `docs/local-jobdesk-validation.md` for measured evidence and limitations.
+
+
+## Manually started owner independent of an executor session
+
+For application work spanning executor turns, use:
+
+```sh
+npm run jobs:cli -- start-background
+npm run jobs:cli -- status
+npm run jobs:cli -- stop-background
+```
+
+`start-background` creates an independent process session with no inherited
+terminal or pipe handles, waits for the same private socket's health response,
+and prints its verified PID. It uses the same data root, migrations and sole-owner
+lock as foreground startup. A live healthy owner is reused; an unhealthy live
+owner or stopped lock is rejected. Stopped-lock recovery remains the explicit
+`recover-lock` command and still requires submission reconciliation.
+
+Startup writes only private `owner.log` and `owner-process.json` files under the
+existing private data root. The latter binds graceful stop to the exact lock
+created by this launcher. `stop-background` verifies the binding, live PID and
+health before sending SIGTERM, then waits for normal database/lock cleanup. It
+will not stop a foreground or replacement owner with a different binding.
+
+This is a manually started process, not a launch agent, login installation,
+scheduler, crash supervisor or restart policy. It does not alter credentials,
+security, databases, application records or hosted configuration. It survives
+its launcher/executor process session but not a host reboot or process kill.
+Check health before work; inspect private logs on failure. Restarts invalidate
+browser sessions and preserve/fence uncertain submission attempts as before.
+# Manual application drafts
+
+The private broker supports `draft.saveManual` with one object containing
+`leadId`, `resumeVariant`, `outreach`, and reviewed `claimIds`. It saves prepared
+materials without an API key or model assessment. The original posting must be
+verified and saved; passed/applied leads and unresolved or confirmed submission
+attempts are rejected. Current reviewed truths are snapshotted by the owner.
+Saving always requires renewed review. The existing version-specific
+`draft.approve` and hash-bound `submission.begin` checks still apply. Callers must
+keep the exact reviewed résumé, attachment identity and answers in the materials;
+this method does not infer factual support for arbitrary prose or grant approval.

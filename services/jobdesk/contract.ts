@@ -1,7 +1,9 @@
 import { z } from 'zod';
-import { reviewBatchSchema } from '../../lib/resume-truth-review';
+import { projectTruthSchema, reviewBatchSchema } from '../../lib/resume-truth-review';
 import { leaseSchema, claimSchema } from './queue';
 import { draftBindingSchema } from './submission-draft';
+import { truthReconciliationSchema } from './truth-reconciliation';
+import { manualDraftSchema } from './manual-draft';
 
 const id = z.string().regex(/^[a-f0-9]{64}$/);
 const text = z.string().max(1000);
@@ -11,6 +13,8 @@ export const methodSchemas = {
   'truth.list': z.tuple([]),
   'truth.versions': z.tuple([z.string().min(1).max(160)]),
   'truth.review': z.tuple([reviewBatchSchema]),
+  'truth.addProject': z.tuple([projectTruthSchema]),
+  'truth.reconcileHosted': z.tuple([truthReconciliationSchema]),
   'leads.list': z.tuple([]),
   'leads.add': z.tuple([
     z
@@ -73,6 +77,7 @@ export const methodSchemas = {
   'draft.posting': z.tuple([id, z.string().min(200).max(30000), z.string().min(8).max(500)]),
   'draft.assess': z.tuple([id]),
   'draft.edit': z.tuple([id, z.string().max(12000), z.string().max(3000)]),
+  'draft.saveManual': z.tuple([manualDraftSchema]),
   'draft.pdf': z.tuple([id]),
   'draft.approve': z.tuple([id, z.string().min(1).max(100)]),
   'batches.list': z.tuple([]),

@@ -4,9 +4,18 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { brokerCall } from './client';
 import { JobdeskStore, DEFAULT_ROOT, recoverOwnerLock, PGLITE_VERSION } from './store';
+import { startDetachedOwner, stopDetachedOwner } from './owner-launch';
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
+  if (command === 'start-background') {
+    console.log(JSON.stringify(await startDetachedOwner()));
+    return;
+  }
+  if (command === 'stop-background') {
+    console.log(JSON.stringify(await stopDetachedOwner()));
+    return;
+  }
   if (command === 'open') {
     const { url } = await brokerCall('browser.open', []);
     await new Promise<void>((resolve, reject) =>
@@ -70,7 +79,7 @@ async function main() {
     return;
   }
   throw new Error(
-    'Commands: open, status, backup, recover-lock, restore BACKUP_DIRECTORY NEW_DATA_DIRECTORY',
+    'Commands: start-background, stop-background, open, status, backup, recover-lock, restore BACKUP_DIRECTORY NEW_DATA_DIRECTORY',
   );
 }
 main().catch((error) => {

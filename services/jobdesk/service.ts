@@ -13,6 +13,8 @@ import { bootstrap, privateBootstrap } from './bootstrap';
 import type { JobdeskStore } from './store';
 import { readSubmissionDraft } from './submission-draft';
 import { JobdeskError } from './errors';
+import { reconcileHostedTruth } from './truth-reconciliation';
+import { saveManualDraft } from './manual-draft';
 
 export const LOCAL_OWNER = 'local-user';
 function operation<S extends z.ZodType>(
@@ -51,6 +53,12 @@ export function createService(store: JobdeskStore) {
     ),
     'truth.review': operation(schemas['truth.review'], ({ 0: input }, sql) =>
       truths.reviewResumeTruth(input.changes, sql),
+    ),
+    'truth.addProject': operation(schemas['truth.addProject'], ([input], sql) =>
+      truths.addProjectTruth(input, sql),
+    ),
+    'truth.reconcileHosted': operation(schemas['truth.reconcileHosted'], ([input], sql) =>
+      reconcileHostedTruth(input, sql),
     ),
     'leads.list': operation(schemas['leads.list'], (_, sql) => discovery.listLeads(sql)),
     'leads.add': operation(schemas['leads.add'], ([input], sql) =>
@@ -99,6 +107,7 @@ export function createService(store: JobdeskStore) {
       await sql`UPDATE job_application_drafts SET review_status='review_required' WHERE lead_id=${id}`;
       await sql`UPDATE jobdesk_artifacts SET approval_state='superseded' WHERE lead_id=${id}`;
     }),
+    'draft.saveManual': operation(schemas['draft.saveManual'], ([input], sql) => saveManualDraft(input, sql)),
     'draft.approve': operation(schemas['draft.approve'], async ([id, version], sql) => {
       const rows = await sql`UPDATE job_application_drafts d SET review_status='approved'
         WHERE lead_id=${id} AND updated_at::text=${version} AND jsonb_array_length(d.truth_snapshot)>0 AND NOT EXISTS (
@@ -217,7 +226,7 @@ export function createService(store: JobdeskStore) {
       throw new Error('Browser launch requires the foreground server.');
     const handler = operations[method];
     return store.run((sql) =>
-      ['submission.record', 'draft.edit', 'draft.approve', 'submission.begin', 'submission.notSubmitted'].includes(method)
+      ['truth.addProject', 'truth.reconcileHosted', 'submission.record', 'draft.edit', 'draft.saveManual', 'draft.approve', 'submission.begin', 'submission.notSubmitted'].includes(method)
         ? store.db.transaction((tx) => handler(args, parameterizedSql(tx)))
         : handler(args, sql),
     );

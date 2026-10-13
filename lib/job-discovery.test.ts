@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { reviewedTruthsForDraft } from './resume-truth-review';
-import type { NeonQueryFunction } from '@neondatabase/serverless';
+import type { Sql } from './job-storage';
 import { DEFAULT_SEARCHES, ingestLinkedInEmailLeads, ingestSearchResults, leadIdForUrl, normalizeSourceUrl, parseGoogleAlertsFeed, parseLinkedInAlertEmailText, runDailySearch, saveManualLead, saveSearchQueries, updateLead, validateGoogleAlertsFeedUrl } from './job-discovery';
 
-type FakeSql = NeonQueryFunction<false, false>;
+type FakeSql = Sql;
 function tagged(fn: (text: string, values: unknown[]) => Promise<unknown[]>): FakeSql {
   return (async (strings: TemplateStringsArray, ...values: unknown[]) => fn(strings.join(' ? '), values)) as FakeSql;
 }
@@ -154,20 +152,3 @@ test('manual lead and pipeline updates use normalized unique URLs and constraine
   await assert.rejects(() => saveSearchQueries([{ id: 'unknown', query: 'long enough search query', feedUrl, enabled: true }], fake), /six defaults/);
 });
 
-test('private page actions authorize reads and writes and cron endpoint validates its secret', async () => {
-  const [page, actions, route, exportRoute] = await Promise.all([
-    readFile(new URL('../app/jobs/page.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('../app/jobs/actions.ts', import.meta.url), 'utf8'),
-    readFile(new URL('../app/api/jobs/discovery/route.ts', import.meta.url), 'utf8'),
-    readFile(new URL('../app/api/jobs/drafting-export/route.ts', import.meta.url), 'utf8'),
-  ]);
-  assert.match(page, /await requireJobsAccount\(\)/);
-  assert.equal((actions.match(/await requireJobsAccount\(\)/g) ?? []).length, 8);
-  assert.match(route, /CRON_SECRET/);
-  assert.match(route, /timingSafeEqual/);
-  assert.match(exportRoute, /await requireJobsAccount\(\)/);
-  assert.match(exportRoute, /reviewedResumeClaims: reviewedTruthsForDraft\(claims\)/);
-  const claims = (['unreviewed', 'reviewed', 'rejected'] as const).map((reviewStatus) => ({ id: reviewStatus, claim: 'Fact', sourceNote: 'Evidence', reviewStatus }));
-  assert.deepEqual(reviewedTruthsForDraft(claims), [{ id: 'reviewed', claim: 'Fact', sourceNote: 'Evidence' }]);
-  assert.match(exportRoute, /decision === 'keep'/);
-});

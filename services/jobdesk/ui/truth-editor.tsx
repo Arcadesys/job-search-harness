@@ -1,8 +1,6 @@
-'use client';
 
-import Link from 'next/link';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { editedStatus, groupTruths, relatedTruthPairs, truthProgress, truthSections, type ReviewClaim, type TruthChange, type TruthStatus } from '@/lib/resume-truth-review';
+import { editedStatus, groupTruths, relatedTruthPairs, truthProgress, truthSections, type ReviewClaim, type TruthChange, type TruthStatus } from '../../../lib/resume-truth-review';
 
 type Version = { createdAt: string; reviewStatus: string; claim: string; sourceNote: string };
 type Draft = { claim: string; sourceNote: string };
@@ -188,7 +186,7 @@ export default function TruthEditor({ claims }: { claims: ReviewClaim[] }) {
       <footer className="truthActions"><p>{selected.size} selected · {active.claims.filter((item) => item.reviewStatus === 'unreviewed' && !selected.has(item.id)).length} left for later</p>
         <button type="button" className="jobsButtonPrimary" disabled={locked || selected.size === 0 || !!conflicts.length} onClick={() => save(selectedItems.map((item) => ({ id: item.id, expectedVersion: item.version, reviewStatus: 'reviewed' })), true)}>{busy ? 'Saving…' : `Approve ${selected.size} selected`}</button>
         <button type="button" disabled={locked || groups.indexOf(active) === groups.length - 1} onClick={() => selectGroup(groups[groups.indexOf(active) + 1].id)}>{active.section === 'Work experience' && groups[groups.indexOf(active) + 1]?.section === 'Work experience' ? 'Next role' : 'Next group'}</button>
-        <Link href="/jobs" aria-disabled={locked || undefined} onClick={(event) => { if (locked) event.preventDefault(); }}>Finish for now</Link>
+        <a href="/jobs" aria-disabled={locked || undefined} onClick={(event) => { if (locked) event.preventDefault(); }}>Finish for now</a>
       </footer>
     </> : <p className="truthEmpty">No résumé truths yet.</p>}</div></div>
   </section>;

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { hostedJobSql, type Sql } from './job-storage';
+import type { Sql } from './job-storage';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 export const SEARCH_CAP = 300;
@@ -14,7 +14,6 @@ export const DEFAULT_SEARCHES = [
 
 export type SearchResult = { title: string; url: string; description?: string; age?: string; profile?: { long_name?: string; name?: string } };
 
-const db = hostedJobSql;
 
 export function normalizeSourceUrl(input: string): string {
   const url = new URL(input);
@@ -66,7 +65,7 @@ export function parseGoogleAlertsFeed(xml: string): SearchResult[] {
   }).filter((entry: SearchResult) => entry.title && entry.url);
 }
 
-export async function initializeSearchQueries(sql: Sql = db()): Promise<void> {
+export async function initializeSearchQueries(sql: Sql): Promise<void> {
   const values = JSON.stringify(DEFAULT_SEARCHES.map((query) => ({ ...query, enabled: true })));
   await sql`WITH seeds AS (
     SELECT * FROM jsonb_to_recordset(${values}::jsonb) AS x(id text, lane text, location text, query text, enabled boolean)
@@ -74,12 +73,12 @@ export async function initializeSearchQueries(sql: Sql = db()): Promise<void> {
     SELECT id,lane,location,query,enabled FROM seeds ON CONFLICT (id) DO NOTHING`;
 }
 
-export async function listSearchQueries(sql: Sql = db()) {
+export async function listSearchQueries(sql: Sql) {
   await initializeSearchQueries(sql);
   return await sql`SELECT id,lane,location,query,feed_url AS "feedUrl",enabled FROM job_search_queries ORDER BY id`;
 }
 
-export async function saveSearchQueries(queries: Array<{ id: string; query: string; feedUrl: string; enabled: boolean }>, sql: Sql = db()): Promise<void> {
+export async function saveSearchQueries(queries: Array<{ id: string; query: string; feedUrl: string; enabled: boolean }>, sql: Sql): Promise<void> {
   const allowed = new Set<string>(DEFAULT_SEARCHES.map((item) => item.id));
   if (queries.length !== 6 || queries.some((item) => !allowed.has(item.id) || item.query.trim().length < 8 || item.query.length > 500)) throw new Error('Provide an edited query for each of the six defaults.');
   const payload = JSON.stringify(queries.map((item) => ({ ...item, query: item.query.trim(), feedUrl: item.feedUrl.trim() ? validateGoogleAlertsFeedUrl(item.feedUrl) : '' })));
@@ -89,7 +88,7 @@ export async function saveSearchQueries(queries: Array<{ id: string; query: stri
     FROM changes c WHERE q.id=c.id`;
 }
 
-export async function saveManualLead(input: { url: string; title: string; organization?: string; location?: string; notes?: string }, sql: Sql = db()): Promise<void> {
+export async function saveManualLead(input: { url: string; title: string; organization?: string; location?: string; notes?: string }, sql: Sql): Promise<void> {
   const sourceUrl = normalizeSourceUrl(input.url);
   const title = input.title.trim();
   if (!title || title.length > 250) throw new Error('Add a title up to 250 characters.');
@@ -98,7 +97,7 @@ export async function saveManualLead(input: { url: string; title: string; organi
     ON CONFLICT (source_url) DO UPDATE SET last_checked_at=now(),updated_at=now()`;
 }
 
-export async function updateLead(input: { id: string; decision?: string; stage?: string; verification?: string; nextAction?: string; nextActionDate?: string; notes?: string }, sql: Sql = db()): Promise<void> {
+export async function updateLead(input: { id: string; decision?: string; stage?: string; verification?: string; nextAction?: string; nextActionDate?: string; notes?: string }, sql: Sql): Promise<void> {
   const decision = input.decision ?? 'review';
   const stage = input.stage || null;
   const verification = input.verification ?? 'unverified';
@@ -106,11 +105,11 @@ export async function updateLead(input: { id: string; decision?: string; stage?:
   await sql`UPDATE job_leads SET decision=${decision},application_stage=${stage},verification_status=${verification},next_action=${(input.nextAction ?? '').slice(0,500)},next_action_date=${input.nextActionDate || null},notes=${(input.notes ?? '').slice(0,4000)},updated_at=now() WHERE id=${input.id}`;
 }
 
-export async function listLeads(sql: Sql = db()) {
+export async function listLeads(sql: Sql) {
   return await sql`SELECT id,source_url AS "sourceUrl",title,organization,location,snippet,source,discovered_at AS "discoveredAt",last_checked_at AS "lastCheckedAt",verification_status AS "verificationStatus",decision,application_stage AS "applicationStage",next_action AS "nextAction",next_action_date AS "nextActionDate",notes FROM job_leads ORDER BY CASE decision WHEN 'keep' THEN 0 WHEN 'review' THEN 1 ELSE 2 END, COALESCE(next_action_date,discovered_at::date), discovered_at DESC`;
 }
 
-export async function listSearchStatus(sql: Sql = db()) {
+export async function listSearchStatus(sql: Sql) {
   const [usage, runs] = await Promise.all([
     sql`SELECT usage_month AS month,calls_used AS "callsUsed",call_cap AS "callCap" FROM job_search_usage WHERE usage_month=date_trunc('month',now())::date`,
     sql`SELECT run_date AS date,status,started_at AS "startedAt",completed_at AS "completedAt",queries_attempted AS "queriesAttempted",results_seen AS "resultsSeen",new_leads AS "newLeads",calls_used AS "callsUsed",error_message AS "errorMessage" FROM job_search_runs ORDER BY run_date DESC LIMIT 8`,
@@ -127,7 +126,7 @@ async function reserveCall(sql: Sql): Promise<boolean> {
   return result.length > 0;
 }
 
-export async function ingestSearchResults(results: SearchResult[], queryId: string, sql: Sql = db()): Promise<{ seen: number; created: number }> {
+export async function ingestSearchResults(results: SearchResult[], queryId: string, sql: Sql): Promise<{ seen: number; created: number }> {
   const leads: Array<{ id: string; source_url: string; title: string; organization: string; snippet: string; source: string }> = [];
   const sourceUrls = new Set<string>();
   for (const result of results) {
@@ -168,7 +167,7 @@ export function parseLinkedInAlertEmailText(text: string): LinkedInEmailLead[] {
   return leads;
 }
 
-export async function ingestLinkedInEmailLeads(leads: LinkedInEmailLead[], sql: Sql = db()): Promise<{ seen: number; created: number }> {
+export async function ingestLinkedInEmailLeads(leads: LinkedInEmailLead[], sql: Sql): Promise<{ seen: number; created: number }> {
   const unique = new Map<string, LinkedInEmailLead>();
   for (const item of leads) {
     if (!item.title.trim() || !item.organization.trim()) continue;
@@ -192,8 +191,8 @@ export async function ingestLinkedInEmailLeads(leads: LinkedInEmailLead[], sql: 
   return { seen: unique.size, created: rows.filter((row) => row.inserted === true || row.inserted === 't').length };
 }
 
-export type ScanDependencies = { sql?: Sql; fetcher?: typeof fetch; now?: Date };
-export async function runDailySearch({ sql = db(), fetcher = fetch, now = new Date() }: ScanDependencies = {}) {
+export type ScanDependencies = { sql: Sql; fetcher?: typeof fetch; now?: Date };
+export async function runDailySearch({ sql, fetcher = fetch, now = new Date() }: ScanDependencies) {
   const date = now.toISOString().slice(0, 10);
   const started = await sql`INSERT INTO job_search_runs (run_date,status) VALUES (${date},'running')
     ON CONFLICT (run_date) DO UPDATE SET

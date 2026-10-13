@@ -1,4 +1,4 @@
-import { hostedJobSql, type Sql } from './job-storage';
+import type { Sql } from './job-storage';
 
 export const JOB_REVIEW_TIME_ZONE = 'America/Chicago';
 export const REVIEW_EVENT_TYPES = ['kept', 'application', 'reply', 'interview', 'offer'] as const;
@@ -6,7 +6,6 @@ export type ReviewEventType = typeof REVIEW_EVENT_TYPES[number];
 const MANUAL_REVIEW_EVENT_TYPES = ['kept', 'reply', 'interview', 'offer'] as const;
 const SITE_OUTCOME_TYPES = ['hiring_inquiry', 'conversation_booked'] as const;
 
-const db = hostedJobSql;
 
 export function centralDate(now = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: JOB_REVIEW_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
@@ -32,11 +31,11 @@ export function getReviewWeeks(today = centralDate(), count = 8): string[] {
   });
 }
 
-export async function listReviewLeads(sql: Sql = db()) {
+export async function listReviewLeads(sql: Sql) {
   return await sql`SELECT id,title,organization,source_url AS "sourceUrl",decision FROM job_leads WHERE decision <> 'pass' ORDER BY title`;
 }
 
-export async function listWeeklyReview(weeks: string[], sql: Sql = db()) {
+export async function listWeeklyReview(weeks: string[], sql: Sql) {
   if (!weeks.length || weeks.length > 26 || weeks.some((week) => !isIsoDate(week))) throw new Error('Invalid review weeks.');
   const payload = JSON.stringify(weeks.map((week_start) => ({ week_start })));
   return await sql`WITH weeks AS (
@@ -74,12 +73,12 @@ export async function listWeeklyReview(weeks: string[], sql: Sql = db()) {
       LEFT JOIN job_review_weeks r USING (week_start) ORDER BY w.week_start DESC`;
 }
 
-export async function listSiteOutcomes(sql: Sql = db()) {
+export async function listSiteOutcomes(sql: Sql) {
   return await sql`SELECT id, outcome_type AS type, occurred_on AS date, evidence_ref AS "evidenceRef"
     FROM work_site_outcomes ORDER BY occurred_on DESC, id DESC LIMIT 30`;
 }
 
-export async function recordSiteOutcome(input: { type: string; date: string; evidenceRef: string }, sql: Sql = db()): Promise<void> {
+export async function recordSiteOutcome(input: { type: string; date: string; evidenceRef: string }, sql: Sql): Promise<void> {
   if (!SITE_OUTCOME_TYPES.includes(input.type as typeof SITE_OUTCOME_TYPES[number])) throw new Error('Choose a supported outcome.');
   if (!isIsoDate(input.date) || input.date > centralDate()) throw new Error('Enter a valid date that has happened.');
   const evidenceRef = input.evidenceRef.trim();
@@ -89,12 +88,12 @@ export async function recordSiteOutcome(input: { type: string; date: string; evi
     ON CONFLICT (outcome_type, evidence_ref) DO UPDATE SET occurred_on=EXCLUDED.occurred_on`;
 }
 
-export async function removeSiteOutcome(id: string, sql: Sql = db()): Promise<void> {
+export async function removeSiteOutcome(id: string, sql: Sql): Promise<void> {
   if (!/^\d{1,18}$/.test(id)) throw new Error('Invalid outcome.');
   await sql`DELETE FROM work_site_outcomes WHERE id=${id}::bigint`;
 }
 
-export async function recordReviewEvent(input: { leadId: string; type: string; date: string; note?: string }, sql: Sql = db()): Promise<void> {
+export async function recordReviewEvent(input: { leadId: string; type: string; date: string; note?: string }, sql: Sql): Promise<void> {
   if (!MANUAL_REVIEW_EVENT_TYPES.includes(input.type as typeof MANUAL_REVIEW_EVENT_TYPES[number])) throw new Error('Choose a supported activity type.');
   if (!isIsoDate(input.date)) throw new Error('Enter a valid activity date.');
   if (input.date > centralDate()) throw new Error('Record an activity only after its date has happened.');
@@ -105,7 +104,7 @@ export async function recordReviewEvent(input: { leadId: string; type: string; d
   if (!result.length) throw new Error('Lead not found.');
 }
 
-export async function markReviewWeekComplete(weekStart: string, sql: Sql = db()): Promise<void> {
+export async function markReviewWeekComplete(weekStart: string, sql: Sql): Promise<void> {
   if (!isIsoDate(weekStart) || !getReviewWeeks(weekStart, 1).includes(weekStart)) throw new Error('Invalid review week.');
   await sql`INSERT INTO job_review_weeks (week_start) VALUES (${weekStart})
     ON CONFLICT (week_start) DO UPDATE SET reviewed_at=now()`;

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 
 type View = 'today' | 'leads' | 'truths' | 'review' | 'settings';
 const navigation: { id: View; label: string; href: string }[] = [
@@ -13,7 +12,7 @@ export default function JobsShell({ active, children, truthReview = false, sessi
     <a className="jobsSkip" href="#jobs-content">Skip to content</a>
     <aside className="jobsSidebar" aria-label="Private job workspace navigation">
       <div className="jobsBrand"><span className="jobsBrandMark" aria-hidden="true">◆</span><div><strong>Job Desk</strong><small>Private workspace</small></div></div>
-      <nav aria-label="Job Desk"><ul>{navigation.map((item) => <li key={item.id}><Link href={item.href} aria-current={active === item.id ? 'page' : undefined}>{item.label}</Link></li>)}</ul></nav>
+      <nav aria-label="Job Desk"><ul>{navigation.map((item) => <li key={item.id}><a href={item.href} aria-current={active === item.id ? 'page' : undefined}>{item.label}</a></li>)}</ul></nav>
       <p className="jobsSidebarNote">Your applications and résumé truths stay private.</p>
     </aside>
     <div className="jobsMainColumn">

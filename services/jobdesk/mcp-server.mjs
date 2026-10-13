@@ -161,7 +161,7 @@ export function createProtocolHandler({ request = createJobHuntApiClient() } = {
       });
     }
     if (message.method === 'tools/list')
-      return reply({ tools: tools.map(({ run, ...definition }) => definition) });
+      return reply({ tools: tools.map(({ run: _run, ...definition }) => definition) });
     if (message.method === 'tools/call') {
       const tool = byName.get(message.params?.name);
       if (!tool)

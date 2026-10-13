@@ -1,9 +1,8 @@
-import { hostedJobSql, type Sql } from './job-storage';
+import type { Sql } from './job-storage';
 import { listResumeTruth, type TruthClaim } from '@/lib/resume-truth';
 
 export const DRAFT_MODEL = 'gpt-6-luna';
 export const MONTHLY_AI_BUDGET_USD = 8.5;
-const db = hostedJobSql;
 
 export function estimateLunaCost(input: number, output: number): number {
   return (input * 0.1 + output * 0.5) / 1_000_000;
@@ -23,12 +22,12 @@ export function renderTruthGroundedDraft(claims: TruthClaim[], title: string, or
   };
 }
 
-export async function getDraftingLead(id: string, sql: Sql = db()) {
+export async function getDraftingLead(id: string, sql: Sql) {
   const rows = await sql`SELECT id,source_url AS "sourceUrl",title,organization,location,source,verification_status AS "verificationStatus",posting_text AS "postingText",posting_source_note AS "postingSourceNote" FROM job_leads WHERE id=${id}`;
   return rows[0] ?? null;
 }
 
-export async function saveOriginalPosting(id: string, text: string, note: string, sql: Sql = db()): Promise<void> {
+export async function saveOriginalPosting(id: string, text: string, note: string, sql: Sql): Promise<void> {
   const content = text.trim();
   const sourceNote = note.trim();
   if (content.length < 200 || content.length > 30000) throw new Error('Paste at least 200 characters of the original posting (up to 30,000).');
@@ -36,12 +35,12 @@ export async function saveOriginalPosting(id: string, text: string, note: string
   await sql`UPDATE job_leads SET posting_text=${content},posting_source_note=${sourceNote},verification_status='verified',last_checked_at=now(),updated_at=now() WHERE id=${id}`;
 }
 
-export async function currentAiUsage(sql: Sql = db()) {
+export async function currentAiUsage(sql: Sql) {
   const rows = await sql`SELECT estimated_usd AS "estimatedUsd",input_tokens AS "inputTokens",output_tokens AS "outputTokens",unknown_cost_requests AS "unknownCostRequests",request_count AS "requestCount",budget_usd AS "budgetUsd" FROM job_ai_usage WHERE usage_month=date_trunc('month',now())::date`;
   return rows[0] ?? { estimatedUsd: 0, inputTokens: 0, outputTokens: 0, unknownCostRequests: 0, requestCount: 0, budgetUsd: MONTHLY_AI_BUDGET_USD };
 }
 
-export async function listDraftingHistory(leadId: string, sql: Sql = db()) {
+export async function listDraftingHistory(leadId: string, sql: Sql) {
   const [assessments, drafts] = await Promise.all([
     sql`SELECT id,status,assessment,model,input_tokens AS "inputTokens",output_tokens AS "outputTokens",estimated_usd AS "estimatedUsd",created_at AS "createdAt" FROM job_fit_assessments WHERE lead_id=${leadId} ORDER BY created_at DESC LIMIT 10`,
     sql`SELECT id,resume_variant AS "resumeVariant",outreach,claim_ids AS "claimIds",truth_snapshot AS "truthSnapshot",created_at AS "createdAt",updated_at AS "updatedAt" FROM job_application_drafts WHERE lead_id=${leadId}`,
@@ -60,7 +59,7 @@ async function reserveBudget(sql: Sql): Promise<boolean> {
   return rows.length > 0;
 }
 
-export async function assessAndDraft(leadId: string, sql: Sql = db()) {
+export async function assessAndDraft(leadId: string, sql: Sql) {
   const block = async (reason: string) => {
     await sql`INSERT INTO job_fit_assessments (lead_id,status,assessment) VALUES (${leadId},'blocked',${JSON.stringify({ reason })}::jsonb)`;
     return { blocked: true as const, reason };
@@ -128,7 +127,7 @@ export async function assessAndDraft(leadId: string, sql: Sql = db()) {
   }
 }
 
-export async function saveDraftEdits(leadId: string, resumeVariant: string, outreach: string, sql: Sql = db()) {
+export async function saveDraftEdits(leadId: string, resumeVariant: string, outreach: string, sql: Sql) {
   if (resumeVariant.length > 12000 || outreach.length > 3000) throw new Error('Draft is too long.');
   await sql`UPDATE job_application_drafts SET resume_variant=${resumeVariant},outreach=${outreach},updated_at=now() WHERE lead_id=${leadId}`;
 }

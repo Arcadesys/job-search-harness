@@ -1,4 +1,4 @@
-import { hostedJobSql, type Sql } from './job-storage';
+import type { Sql } from './job-storage';
 import { projectTruthSchema, reviewBatchSchema, type ProjectTruthInput, type TruthChange, type ReviewClaim } from './resume-truth-review';
 import truthSeeds from './resume-truth-seeds.json';
 
@@ -13,7 +13,6 @@ export type TruthClaim = {
 
 export type TruthVersion = TruthClaim & { createdAt: string };
 
-const getSql = hostedJobSql;
 
 /**
  * Every seed starts as unreviewed. The seeds are a frozen snapshot of the
@@ -25,7 +24,7 @@ export function baselineResumeClaims(): TruthClaim[] {
   return (truthSeeds as TruthClaim[]).map((claim) => ({ ...claim }));
 }
 
-export async function seedResumeTruth(sql: Sql = getSql()): Promise<void> {
+export async function seedResumeTruth(sql: Sql): Promise<void> {
   const claims = baselineResumeClaims();
   const payload = JSON.stringify(claims.map((claim) => ({
     id: claim.id, claim: claim.claim, source_note: claim.sourceNote, review_status: claim.reviewStatus,
@@ -45,14 +44,14 @@ export async function seedResumeTruth(sql: Sql = getSql()): Promise<void> {
   `;
 }
 
-export async function listResumeTruth(sql: Sql = getSql()): Promise<ReviewClaim[]> {
+export async function listResumeTruth(sql: Sql): Promise<ReviewClaim[]> {
   await seedResumeTruth(sql);
   const rows = await sql`SELECT id, claim, source_note AS "sourceNote", review_status AS "reviewStatus", updated_at AS "updatedAt", updated_at::text AS version FROM resume_truth_claims ORDER BY id`;
   return rows as ReviewClaim[];
 }
 
 /** Atomically updates the current claim and appends its immutable version. */
-export async function saveResumeTruth(claim: TruthClaim, sql: Sql = getSql()): Promise<void> {
+export async function saveResumeTruth(claim: TruthClaim, sql: Sql): Promise<void> {
   await sql`
     WITH saved AS (
       INSERT INTO resume_truth_claims (id, claim, source_note, review_status)
@@ -67,7 +66,7 @@ export async function saveResumeTruth(claim: TruthClaim, sql: Sql = getSql()): P
   `;
 }
 
-export async function listResumeTruthVersions(id: string, sql: Sql = getSql()): Promise<TruthVersion[]> {
+export async function listResumeTruthVersions(id: string, sql: Sql): Promise<TruthVersion[]> {
   const rows = await sql`SELECT claim_id AS id, claim, source_note AS "sourceNote", review_status AS "reviewStatus", created_at AS "createdAt" FROM resume_truth_versions WHERE claim_id = ${id} ORDER BY created_at DESC, id DESC`;
   return rows as TruthVersion[];
 }
@@ -103,7 +102,7 @@ export async function addProjectTruth(raw: ProjectTruthInput, sql: Sql): Promise
  * Timestamp text is an opaque token: retaining PostgreSQL precision avoids JS
  * millisecond rounding and remains compatible with the legacy PATCH writer.
  */
-export async function reviewResumeTruth(changes: TruthChange[], sql: Sql = getSql()): Promise<{ claims: ReviewClaim[]; conflicts: string[] }> {
+export async function reviewResumeTruth(changes: TruthChange[], sql: Sql): Promise<{ claims: ReviewClaim[]; conflicts: string[] }> {
   const input = reviewBatchSchema.parse({ changes });
   const payload = JSON.stringify(input.changes);
   const rows = await sql`

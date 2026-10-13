@@ -1,9 +1,8 @@
-/* Standalone loopback UI uses ordinary document navigation, not Next routing. */
-/* eslint-disable @next/next/no-html-link-for-pages, @next/next/no-location-assign-relative-destination */
+/* Standalone loopback UI uses ordinary document navigation. */
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import TruthEditor from '../../app/jobs/truth-editor';
-import JobsShell from '../../app/jobs/jobs-shell';
+import TruthEditor from './ui/truth-editor';
+import JobsShell from './ui/jobs-shell';
 import type { ReviewClaim } from '../../lib/resume-truth-review';
 import type { SqlRow } from '../../lib/job-storage';
 import type { Method } from './contract';

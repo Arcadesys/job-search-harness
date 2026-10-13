@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import type { NeonQueryFunction } from '@neondatabase/serverless';
+import type { Sql } from './job-storage';
 import { centralDate, getReviewWeeks, JOB_REVIEW_TIME_ZONE, listWeeklyReview, markReviewWeekComplete, recordReviewEvent, recordSiteOutcome, removeSiteOutcome } from './jobs-review';
 
-type FakeSql = NeonQueryFunction<false, false>;
+type FakeSql = Sql;
 function tagged(fn: (text: string, values: unknown[]) => Promise<unknown[]>): FakeSql {
   return (async (strings: TemplateStringsArray, ...values: unknown[]) => fn(strings.join(' ? '), values)) as FakeSql;
 }
@@ -75,17 +74,3 @@ test('weekly zero is explicit only after review, and only Monday dates can close
   await assert.rejects(() => markReviewWeekComplete('2026-09-22', fake), /Invalid review week/);
 });
 
-test('review route and both mutations require the authorized jobs account', async () => {
-  const [page, actions] = await Promise.all([
-    readFile(new URL('../app/jobs/review/page.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('../app/jobs/review/actions.ts', import.meta.url), 'utf8'),
-  ]);
-  assert.match(page, /await requireJobsAccount\(\)/);
-  assert.equal((actions.match(/await requireJobsAccount\(\)/g) ?? []).length, 4);
-  assert.match(page, /JOB_REVIEW_TIME_ZONE/);
-  assert.match(page, /Not recorded/);
-  assert.match(page, /Applications are counted from confirmed submission receipts/);
-  assert.doesNotMatch(page, /option value="application"/);
-  assert.match(page, /Confirmed inquiries and conversations/);
-  assert.match(page, /not sent to PostHog/);
-});

@@ -70,28 +70,11 @@ export async function startJobdesk({
       format: 'iife',
       jsx: 'automatic',
       define: { 'process.env.NODE_ENV': '"production"' },
-      plugins: [
-        {
-          name: 'local-links',
-          setup(plugin) {
-            plugin.onResolve({ filter: /^next\/link$/ }, () => ({
-              path: 'link',
-              namespace: 'local',
-            }));
-            plugin.onLoad({ filter: /.*/, namespace: 'local' }, () => ({
-              contents:
-                'import React from "react"; export default function Link(props){return React.createElement("a",props);}',
-              resolveDir: fileURLToPath(new URL('../../', import.meta.url)),
-              loader: 'js',
-            }));
-          },
-        },
-      ],
     });
     const css =
-      (await readFile(new URL('../../app/globals.css', import.meta.url), 'utf8')) +
+      (await readFile(new URL('./ui/base.css', import.meta.url), 'utf8')) +
       '\n' +
-      (await readFile(new URL('../../app/jobs/jobs.css', import.meta.url), 'utf8')) +
+      (await readFile(new URL('./ui/jobs.css', import.meta.url), 'utf8')) +
       '\n:root{--font-sans:Arial,sans-serif}';
     let origin = '';
     web = createServer(async (req, res) => {

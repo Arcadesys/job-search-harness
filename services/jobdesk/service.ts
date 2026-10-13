@@ -14,7 +14,10 @@ import type { JobdeskStore } from './store';
 import { readSubmissionDraft } from './submission-draft';
 import { JobdeskError } from './errors';
 import { saveManualDraft } from './manual-draft';
-import { readSettings, readTimeZone, saveSettings } from '../../lib/jobdesk-settings';
+import { draftingModel, readSettings, readTimeZone, saveSettings } from '../../lib/jobdesk-settings';
+import { openaiProvider } from '../../lib/drafting-openai';
+import { anthropicProvider } from '../../lib/drafting-anthropic';
+import { apiKeyFor, apiKeyStatus, saveApiKey } from './secrets';
 
 export const LOCAL_OWNER = 'local-user';
 
@@ -49,6 +52,15 @@ export async function initializeService(store: JobdeskStore) {
 
 export function createService(store: JobdeskStore) {
   const schemas = methodSchemas;
+  /** null when the user has not turned on drafting or has no key for the chosen provider. */
+  const assessmentProvider = async (sql: Sql) => {
+    const { drafting } = await readSettings(sql);
+    if (drafting.provider === 'none') return null;
+    const key = await apiKeyFor(store.root, drafting.provider);
+    if (!key) return null;
+    const model = draftingModel(drafting);
+    return drafting.provider === 'openai' ? openaiProvider(key, model) : anthropicProvider(key, model);
+  };
   const operations = {
     health: operation(schemas.health, async (_, sql) => ({
       ok: true,
@@ -109,7 +121,7 @@ export function createService(store: JobdeskStore) {
       await sql`UPDATE jobdesk_artifacts SET approval_state='superseded' WHERE lead_id=${id}`;
       await sql`INSERT INTO jobdesk_model_runs(id,usage_month,state) VALUES(${runId},date_trunc('month',now())::date,'pending')`;
       try {
-        return await drafting.assessAndDraft(id, sql);
+        return await drafting.assessAndDraft(id, sql, await assessmentProvider(sql));
       } finally {
         await sql`UPDATE jobdesk_model_runs SET state='finished' WHERE id=${runId}`;
       }
@@ -227,7 +239,13 @@ export function createService(store: JobdeskStore) {
     'review.outcome': operation(schemas['review.outcome'], async ([input], sql) =>
       review.recordSiteOutcome(input, sql, await readTimeZone(sql)),
     ),
-    'settings.read': operation(schemas['settings.read'], (_, sql) => readSettings(sql)),
+    'settings.read': operation(schemas['settings.read'], async (_, sql) => ({
+      ...(await readSettings(sql)), apiKeys: await apiKeyStatus(store.root),
+    })),
+    'settings.saveApiKey': operation(schemas['settings.saveApiKey'], async ([provider, key]) => {
+      await userFacing(() => saveApiKey(store.root, provider, key));
+      return { saved: Boolean(key.trim()) };
+    }),
     'settings.save': operation(schemas['settings.save'], ([input], sql) => saveSettings(input, sql)),
     'review.removeOutcome': operation(schemas['review.removeOutcome'], ([id], sql) =>
       review.removeSiteOutcome(id, sql),

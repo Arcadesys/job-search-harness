@@ -30,16 +30,27 @@ export type JobdeskSettings = z.infer<typeof settingsSchema>;
 
 export const DEFAULT_MODELS: Record<Exclude<DraftingProvider, 'none'>, string> = {
   openai: 'gpt-6-luna',
-  anthropic: 'claude-haiku-5-5',
+  anthropic: 'claude-opus-5-5',
 };
 
-export async function readSettings(sql: Sql): Promise<JobdeskSettings> {
+/** Until the user chooses, use whichever provider already has a key in the environment. */
+function defaultDrafting(env: Record<string, string | undefined>): JobdeskSettings['drafting'] {
+  const provider = env.OPENAI_API_KEY ? 'openai' : env.ANTHROPIC_API_KEY ? 'anthropic' : 'none';
+  return { provider, model: provider === 'none' ? '' : DEFAULT_MODELS[provider] };
+}
+
+/** The model to call: the saved choice, or the provider's default when left blank. */
+export function draftingModel(drafting: JobdeskSettings['drafting']): string {
+  return drafting.provider === 'none' ? '' : drafting.model || DEFAULT_MODELS[drafting.provider];
+}
+
+export async function readSettings(sql: Sql, env: Record<string, string | undefined> = process.env): Promise<JobdeskSettings> {
   const rows = await sql`SELECT key, value FROM jobdesk_settings WHERE key IN ('timeZone','drafting')`;
   const stored = Object.fromEntries(rows.map((row) => [row.key, row.value]));
   const timeZone = typeof stored.timeZone === 'string' && validTimeZone(stored.timeZone)
     ? stored.timeZone : systemTimeZone();
   const parsed = settingsSchema.shape.drafting.safeParse(stored.drafting);
-  return { timeZone, drafting: parsed.success ? parsed.data : { provider: 'none', model: '' } };
+  return { timeZone, drafting: parsed.success ? parsed.data : defaultDrafting(env) };
 }
 
 export async function readTimeZone(sql: Sql): Promise<string> {

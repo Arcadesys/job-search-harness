@@ -238,7 +238,7 @@ function Cockpit({ data }: { data: any }) {
             <button disabled={busy} onClick={() => void run('draft.assess', [segments[1]], false)}>
               Assess and prepare draft
             </button>
-            <p>Uses your reviewed claims. Provider access requires an existing configured key.</p>
+            <p>Uses only your approved claims. Needs a provider and API key in Settings, or ask your AI assistant to prepare the draft instead.</p>
             <p>
               Monthly estimate: ${String(data.usage?.estimatedUsd ?? 0)} of $
               {String(data.usage?.budgetUsd ?? 8.5)}.
@@ -432,7 +432,7 @@ function Cockpit({ data }: { data: any }) {
           <SearchEditor queries={data.search.queries} busy={busy} onSave={(rows) => void run('search.save', [rows])} />
           <form
             className="jobsPanel"
-            onSubmit={form('settings.save', (f) => [{ ...data.settings, timeZone: value(f, 'timeZone') }])}
+            onSubmit={form('settings.save', (f) => [{ timeZone: value(f, 'timeZone'), drafting: data.settings.drafting }])}
           >
             <h2>Time zone</h2>
             <p>Weekly reviews and application dates use this zone.</p>
@@ -444,6 +444,55 @@ function Cockpit({ data }: { data: any }) {
               {Intl.supportedValuesOf('timeZone').map((zone) => <option key={zone} value={zone} />)}
             </datalist>
             <button disabled={busy}>Save time zone</button>
+          </form>
+          <form
+            className="jobsPanel"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const f = event.currentTarget;
+              const provider = value(f, 'provider') as 'none' | 'openai' | 'anthropic';
+              const key = value(f, 'apiKey');
+              setBusy(true);
+              setError('');
+              void (async () => {
+                try {
+                  if (provider !== 'none' && key) await rpc('settings.saveApiKey', [provider, key]);
+                  await rpc('settings.save', [{ timeZone: data.settings.timeZone, drafting: { provider, model: value(f, 'model') } }]);
+                  location.reload();
+                } catch (cause) {
+                  setError(cause instanceof Error ? cause.message : 'Action failed.');
+                  setBusy(false);
+                }
+              })();
+            }}
+          >
+            <h2>Drafting in this app (optional)</h2>
+            <p>
+              You do not need this. Claude or ChatGPT can prepare drafts for you from your approved claims. Turn it on only if you
+              want the <q>Assess and prepare draft</q> button here; it uses your own API key and stops at the monthly budget.
+            </p>
+            <label>
+              Provider
+              <select name="provider" defaultValue={data.settings.drafting.provider}>
+                <option value="none">Off</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </label>
+            <label>
+              Model
+              <input name="model" maxLength={100} placeholder="Leave blank for the provider's default" defaultValue={data.settings.drafting.model} />
+            </label>
+            <label>
+              API key
+              <input name="apiKey" type="password" autoComplete="off" maxLength={500}
+                placeholder={data.settings.apiKeys?.[data.settings.drafting.provider] ? 'Saved. Enter a new key to replace it.' : 'Paste your key'} />
+            </label>
+            <p>
+              Keys stay in a private file on this computer, outside the database and its backups. Saved keys:{' '}
+              {data.settings.apiKeys?.anthropic ? 'Anthropic ✓' : 'Anthropic none'} · {data.settings.apiKeys?.openai ? 'OpenAI ✓' : 'OpenAI none'}
+            </p>
+            <button disabled={busy}>Save drafting settings</button>
           </form>
           <section className="jobsPanel">
             <h2>Local backup</h2>

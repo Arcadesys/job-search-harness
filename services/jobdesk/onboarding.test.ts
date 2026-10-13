@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawn } from 'node:child_process';
-import { rm } from 'node:fs/promises';
+import { readdir, readFile, rm, stat } from 'node:fs/promises';
+import path from 'node:path';
 import { startJobdesk } from './server';
 import { brokerCall } from './client';
 import { systemTimeZone } from '../../lib/jobdesk-settings';
 import { sampleResume } from '../../tests/fixtures/sample-resume';
-import { tempRoot } from '../../tests/fixtures/temp-root';
+import { posixModes, tempRoot } from '../../tests/fixtures/temp-root';
+import { apiKeyFor } from './secrets';
 
 /** Runs the real stdio adapter once and returns each tool result. */
 function mcp(socket: string, calls: Array<{ name: string; arguments: unknown }>) {
@@ -100,6 +102,36 @@ test('settings and searches belong to the user and are validated', async () => {
     const edited = (await call('search.settings')).queries;
     assert.deepEqual(edited.map((query: any) => [query.id, query.query]), [['nurse-educator-remote', 'remote clinical educator jobs']],
       'saving replaces the list and keeps existing IDs');
+  } finally {
+    await runtime.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('API keys are write-only, user-only, and never enter the database or its backups', async () => {
+  const root = await tempRoot('jobdesk-keys-');
+  const runtime = await startJobdesk({ root });
+  const key = 'sk-ant-synthetic-test-key-never-sent';
+  try {
+    const call = (method: any, args: any[] = []) => brokerCall(method, args, runtime.socketPath);
+    const initial = await call('settings.read');
+    if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY)
+      assert.deepEqual(initial.drafting, { provider: 'none', model: '' }, 'drafting in the cockpit is off until chosen');
+    await call('settings.save', [{ timeZone: initial.timeZone, drafting: { provider: 'anthropic', model: '' } }]);
+    await call('settings.saveApiKey', ['anthropic', key]);
+    const read = await call('settings.read');
+    assert.equal(read.apiKeys.anthropic, true);
+    assert.ok(!JSON.stringify(read).includes(key), 'settings report that a key exists, never its value');
+    if (posixModes) assert.equal((await stat(path.join(root, 'secrets.json'))).mode & 0o777, 0o600);
+    const backup = await call('backup');
+    for (const file of await readdir(backup.directory))
+      if (!file.endsWith('.gz') && file !== 'artifacts')
+        assert.ok(!(await readFile(path.join(backup.directory, file), 'utf8')).includes(key), `${file} holds no key`);
+    assert.equal(await apiKeyFor(root, 'anthropic', { ANTHROPIC_API_KEY: 'from-environment' }), 'from-environment',
+      'an installer-provided environment key wins');
+    await assert.rejects(call('settings.saveApiKey', ['openai', 'two words']), /does not look like an API key/);
+    await call('settings.saveApiKey', ['anthropic', '']);
+    assert.equal(await apiKeyFor(root, 'anthropic', {}), undefined, 'an empty key clears it');
   } finally {
     await runtime.close();
     await rm(root, { recursive: true, force: true });

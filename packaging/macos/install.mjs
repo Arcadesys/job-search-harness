@@ -112,7 +112,7 @@ export async function install({ bundle = path.resolve(HERE, '../../../..'), app 
     if (oldAgent) {
       const stop = ctl(['bootout', domain, agent]);
       if (stop.status === 0) stoppedOld = true;
-      else if (!/Could not find service|No such process|Input\\/output error/.test(stop.stderr || ''))
+      else if (!['Could not find service', 'No such process', 'Input/output error'].some(msg => (stop.stderr || '').includes(msg)))
         throw new Error('Could not stop existing Jobdesk LaunchAgent: ' + stop.stderr);
     }
     for (const dir of dataDirs) {

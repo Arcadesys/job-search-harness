@@ -139,7 +139,6 @@ export async function install({ bundle = path.resolve(HERE, '../../../..'), app 
       '\n./node ./app/packaging/macos/open.mjs\n';
     await writeFile(path.join(app, 'Open Job Search Harness.command'), launcher, { mode: 0o700 });
     // Running agents must be detached before replacing their definition.
-    const domain = 'gui/' + process.getuid();
     const prior = ctl(['bootout', domain, agent]);
     if (prior.status !== 0 && oldAgent && !/Could not find service|No such process|Input\/output error/.test(prior.stderr || ''))
       throw new Error('Could not detach previous LaunchAgent: ' + prior.stderr);

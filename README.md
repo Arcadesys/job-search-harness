@@ -55,6 +55,12 @@ a few minutes and needs [Node.js 22 or later](https://nodejs.org/).
 4. **Save jobs you want**, add the original posting, and ask your assistant to
    prepare the application. You approve the draft before anything is sent.
 
+The **Discovery and preparation** view can collect a bounded Built In Chicago
+pilot or your enabled feeds, show collection health, and save recoverable
+exclusions. Your assistant reviews compact work packets and selects exact approved
+claims; the harness assembles a résumé and a separate private review packet.
+Unchanged work is reused. See [durable workflows](docs/durable-workflows.md).
+
 The jobdesk runs while your computer is awake. Restart it after a reboot with
 `npm run jobs:cli -- start-background`, and stop it with
 `npm run jobs:cli -- stop-background`. Create a backup anytime in Settings.

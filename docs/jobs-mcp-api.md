@@ -34,3 +34,11 @@ batched again until the user reconciles it in the cockpit.
 
 Lease, draft-binding and receipt rules are described in
 [local-jobdesk.md](local-jobdesk.md#drafts-and-submissions).
+# Durable discovery and preparation
+
+The local owner also exposes compact work-packet preparation, source collection,
+recoverable exclusion pages, explicit revision instructions, and cached material
+exports. See [durable workflows](durable-workflows.md) for the tool sequence,
+result schemas, continuation fields, dependency keys, and upgrade verification.
+The earlier application/submission tools remain available for compatibility.
+

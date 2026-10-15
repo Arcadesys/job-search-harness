@@ -22,8 +22,11 @@ function useWide() {
   const [wide, setWide] = useState(measure);
   useEffect(() => {
     const change = () => setWide(measure());
+    // Root large-text settings can change rem sizes without a window resize.
+    const fontChanges = new MutationObserver(change);
+    fontChanges.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class'] });
     addEventListener('resize', change);
-    return () => removeEventListener('resize', change);
+    return () => { removeEventListener('resize', change); fontChanges.disconnect(); };
   }, []);
   return wide;
 }

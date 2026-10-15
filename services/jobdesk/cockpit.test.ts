@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { rm } from 'node:fs/promises';
+import { cp, readFile, readdir, rm } from 'node:fs/promises';
+import path from 'node:path';
 import { startJobdesk } from './server';
 import { localCall, currentTool } from './mcp-client.mjs';
-import { describeCall } from './cockpit';
+import { describeCall, recordActivity } from './cockpit';
+import { JobdeskStore } from './store';
+import { MIGRATIONS } from './migrate';
+import { createService, initializeService } from './service';
 import { leadIdForUrl } from '../../lib/job-discovery';
 import { tempRoot } from '../../tests/fixtures/temp-root';
 import { sampleResume } from '../../tests/fixtures/sample-resume';
@@ -42,11 +46,59 @@ test('worker calls become structural activity, live leases and pipeline stages',
     assert.equal(pipeline.jobs[0].leased, true);
     assert.equal((await service('cockpit.lead', [leadId])).lease.itemId, itemId);
     assert.deepEqual((await service('cockpit.reconcile')).attempts, []);
+    // A reported application stage is not an employer confirmation receipt.
+    await service('leads.update', [{ id: leadId, decision: 'keep', stage: 'applied' }]);
+    pipeline = await service('cockpit.pipeline');
+    assert.equal(pipeline.jobs[0].applicationStage, 'applied');
+    assert.equal(pipeline.jobs[0].stage, 3);
+    assert.equal(pipeline.funnel.receipts, 0);
     // Browser calls are not assistant activity.
     assert.equal((await service('cockpit.live')).events.length, 2);
   } finally {
     await runtime.close();
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('current main stores upgrade to cockpit activity without changing saved truths or leads', async () => {
+  const root = await tempRoot('jobdesk-cockpit-up-');
+  const previousMigrations = await tempRoot('jobdesk-cockpit-schema-');
+  let store: JobdeskStore | undefined;
+  try {
+    // Reproduce the shipped 13-migration schema, not a fresh redesigned store.
+    await cp(MIGRATIONS, previousMigrations, { recursive: true,
+      filter: filename => path.basename(filename) !== '0014_assistant_activity.sql' });
+    store = await JobdeskStore.open(root, previousMigrations);
+    await initializeService(store);
+    const service = createService(store);
+    await service({ method: 'truth.importResume', args: [sampleResume] });
+    await service({ method: 'leads.add', args: [{ url: 'https://example.test/cockpit-upgrade', title: 'Fictional upgrade fixture' }] });
+    const truths = await store.sql`SELECT * FROM resume_truth_claims ORDER BY id`;
+    const leads = await store.sql`SELECT * FROM job_leads ORDER BY id`;
+    const ledger = await store.sql`SELECT version,checksum FROM jobdesk_migrations ORDER BY version`;
+    assert.equal(ledger.length, 13);
+    await store.close(); store = undefined;
+
+    store = await JobdeskStore.open(root);
+    const updated = await store.sql`SELECT version,checksum FROM jobdesk_migrations ORDER BY version`;
+    assert.deepEqual(updated.slice(0, ledger.length), ledger);
+    assert.equal(updated.at(-1)?.version, '0014_assistant_activity.sql');
+    assert.deepEqual(await store.sql`SELECT * FROM resume_truth_claims ORDER BY id`, truths);
+    assert.deepEqual(await store.sql`SELECT * FROM job_leads ORDER BY id`, leads);
+    const backups = await readdir(path.join(root, 'backups'));
+    assert.equal(backups.length, 1);
+    const backup = JSON.parse(await readFile(path.join(root, 'backups', backups[0], 'manifest.json'), 'utf8'));
+    assert.equal(backup.migrations.length, 13);
+    await store.run(sql => recordActivity(sql, { method: 'truth.list', tool: 'job_hunt_list_truths', args: [], result: truths }));
+    await store.close(); store = undefined;
+    store = await JobdeskStore.open(root);
+    const live = await createService(store)({ method: 'cockpit.live', args: [] }) as { events: { method: string }[] };
+    assert.equal(live.events.length, 1);
+    assert.equal(live.events[0].method, 'truth.list');
+  } finally {
+    await store?.close();
+    await rm(root, { recursive: true, force: true });
+    await rm(previousMigrations, { recursive: true, force: true });
   }
 });
 

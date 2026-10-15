@@ -57,16 +57,34 @@ const kinds: Record<string, [string, string]> = {
 };
 
 export function ActivityFeed({ live, offline, now, onClose, overlay }: { live: LiveState | null; offline: boolean; now: number; onClose: () => void; overlay: boolean }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!overlay) return;
+    const panel = dialog.current;
+    panel?.showModal();
+    return () => panel?.close();
+  }, [overlay]);
+  const close = () => { dialog.current?.close(); onClose(); };
+  const keepFocus = (event: React.KeyboardEvent<HTMLDialogElement>) => {
+    if (event.key !== 'Tab') return;
+    const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, [tabindex]')]
+      .filter(element => element.tabIndex >= 0 && !element.hasAttribute('disabled') && element.getClientRects().length);
+    const first = controls[0], last = controls.at(-1);
+    if (first && ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last))) {
+      event.preventDefault();
+      (event.shiftKey ? last : first)?.focus();
+    }
+  };
   const newest = live?.events[0];
   const fresh = newest && now - Date.parse(newest.at) < 8000;
-  return <aside className="ck-feed" aria-labelledby="ck-feed-title">
+  const content = <>
     <div className="ck-feed-head">
       <div>
         <h2 id="ck-feed-title">Assistant activity</h2>
         <span className={`ck-live ${offline ? 't-bad' : 't-ok'}`}><span className="ck-dot" aria-hidden="true" />{offline ? 'Offline' : 'Live'}</span>
       </div>
       <p>Tool calls from your AI assistant over the job-search-harness MCP connection.</p>
-      {overlay && <button type="button" className="ck-btn ck-btn--small ck-btn--ghost" onClick={onClose}>Close activity</button>}
+      {overlay && <button type="button" className="ck-btn ck-btn--small ck-btn--ghost" onClick={close}>Close activity</button>}
     </div>
     {!live ? <p className="ck-feed-empty">Loading activity…</p> : !live.events.length
       ? <p className="ck-feed-empty">No tool calls yet. Ask your assistant to check your job search setup and its calls will appear here.</p>
@@ -82,5 +100,8 @@ export function ActivityFeed({ live, offline, now, onClose, overlay }: { live: L
         })}
       </ol>}
     <p className="ck-feed-foot">The assistant cannot submit to employers. A submission needs your approved draft and the employer’s confirmation.</p>
-  </aside>;
+  </>;
+  return overlay ? <dialog ref={dialog} className="ck-feed" aria-labelledby="ck-feed-title" onKeyDown={keepFocus}
+    onCancel={event => { event.preventDefault(); close(); }}>{content}</dialog>
+    : <aside className="ck-feed" aria-labelledby="ck-feed-title">{content}</aside>;
 }

@@ -19,7 +19,7 @@ const shortDate = (iso: string) => new Date(iso).toLocaleDateString([], { month:
 /** The single most useful status for a role, always as words plus a tone. */
 export function jobStatus(job: PipelineJob): { label: string; tone: Tone } {
   if (job.receiptAt) return { label: `Receipt ${shortDate(job.receiptAt)}`, tone: 't-ok' };
-  if (job.applicationStage && ['applied', 'interviewing', 'offer'].includes(job.applicationStage)) return { label: job.applicationStage === 'applied' ? 'Applied' : job.applicationStage === 'offer' ? 'Offer' : 'Interviewing', tone: 't-ok' };
+  if (job.applicationStage && ['applied', 'interviewing', 'offer'].includes(job.applicationStage)) return { label: `${job.applicationStage === 'applied' ? 'Applied' : job.applicationStage === 'offer' ? 'Offer' : 'Interviewing'} (reported)`, tone: 't-muted' };
   if (job.itemStatus === 'blocked') return { label: 'Blocked', tone: 't-bad' };
   if (job.leased) return { label: 'Assistant preparing', tone: 't-accent' };
   if (job.draftStatus === 'approved') return { label: 'Approved', tone: 't-ok' };

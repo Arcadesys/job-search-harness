@@ -120,7 +120,7 @@ export async function pipeline(sql: Sql) {
     WHERE (l.decision<>'pass' OR i.id IS NOT NULL) AND l.application_stage IS DISTINCT FROM 'closed'
     ORDER BY l.updated_at DESC,l.id LIMIT 60`;
   const jobs = rows.map((row) => {
-    const stage = row.receiptAt || ['applied', 'interviewing', 'offer'].includes(row.applicationStage) ? 5
+    const stage = row.receiptAt ? 5
       : row.draftStatus === 'approved' ? 4
         : row.materialState || row.hasDraft || ['preparing', 'awaiting_approval'].includes(row.itemStatus) ? 3
           : row.itemId || row.decision === 'keep' ? 2

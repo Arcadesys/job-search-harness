@@ -2,14 +2,14 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { chmod, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { handleTruthReview } from '../../lib/resume-truth-http';
 import { JobdeskStore, DEFAULT_ROOT } from './store';
 import { createService, initializeService } from './service';
 import { JobdeskError } from './errors';
 import { recordActivity } from './cockpit';
-import { brokerEndpoint } from './paths.mjs';
+import { brokerEndpoint, isMainModule } from './paths.mjs';
 
 const windows = process.platform === 'win32';
 
@@ -61,6 +61,8 @@ export async function startJobdesk({
   try {
     await initializeService(store);
     const service = createService(store);
+    // Transport-derived capability, never accepted from RPC/model arguments.
+    const browserService = createService(store, { trustedUserActions: true });
     const sessions = new Map<string, { csrf: string; expires: number }>();
     const tickets = new Map<string, number>();
     const socketPath = brokerEndpoint(store.root);
@@ -229,7 +231,7 @@ export async function startJobdesk({
             json(res, 403, { error: 'This operation requires the local worker connection.' });
             return;
           }
-          json(res, 200, { data: await service(input) });
+          json(res, 200, { data: await browserService(input) });
           return;
         }
         if (req.method === 'GET' && url.pathname.startsWith('/artifacts/')) {
@@ -354,7 +356,7 @@ async function main() {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+if (isMainModule(import.meta.url))
   main().catch((error) => {
     // Local stderr only (the private owner.log when detached); it holds no record contents.
     console.error(

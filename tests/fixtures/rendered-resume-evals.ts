@@ -15,7 +15,7 @@ export async function renderResumeEvalFixtures() {
       lead: { id: fixture.id, title: fixture.id, organization: 'Fictional Evaluation Employer', verificationStatus: 'verified' },
       posting: fixture.postingText, postingHash, catalogHash: 'synthetic-catalog',
       settings: { preferences: '', currency: 'USD', excludedEmployers: [], excludedLocations: [], links: [] },
-      claims, assessment: {}, assessmentHash: 'synthetic-assessment', selectionHash: 'synthetic-selection', source: {}, tailoringInstructions: '',
+      claims, searchBrief: null, assessment: {}, assessmentHash: 'synthetic-assessment', selectionHash: 'synthetic-selection', source: {}, tailoringInstructions: '',
     };
     const manifest = makeMaterialManifest({ template: TEMPLATE_VERSION, sections: [{ kind: 'experience', claimIds: fixture.selectedClaimIds }], outreach: false, unresolved: [] }, context);
     const rendered = await renderResumeDocument(manifest, []);

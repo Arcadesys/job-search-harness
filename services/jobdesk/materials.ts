@@ -59,7 +59,7 @@ export async function buildMaterials(leadId: string, store: JobdeskStore, repair
     await sql`INSERT INTO job_material_manifests(id,lead_id,selection_id,input_hash,state,manifest,attempts)
       VALUES(${id},${leadId},${selection.id},${inputHash},'pending',${JSON.stringify(manifest)}::jsonb,1)
       ON CONFLICT(lead_id,input_hash) DO UPDATE SET state='pending',attempts=job_material_manifests.attempts+1,error='',updated_at=clock_timestamp()`;
-    return { reused: false as const, id, manifest, inputHash, context };
+    return { reused: false as const, id, manifest, inputHash, context, selectionId: selection.id };
   });
   if (snapshot.reused) return { ...snapshot.prior, inputHash: snapshot.prior.input_hash,
     artifacts: snapshot.prior.artifacts.map((artifact: any) => ({ ...artifact, path: path.join(store.root, artifact.relativePath) })), reused: true };
@@ -82,7 +82,11 @@ export async function buildMaterials(leadId: string, store: JobdeskStore, repair
     return await store.run((_sql) => store.db.transaction(async (tx) => {
       const transactional = parameterizedSql(tx);
       const current = await refreshWorkflow(leadId, transactional);
-      if (materialFingerprint(snapshot.manifest, current) !== snapshot.inputHash)
+      const [selection] = await transactional`SELECT id FROM job_work_stages WHERE lead_id=${leadId}
+        AND stage='selection' AND state='complete' AND input_hash=${current.selectionHash}`;
+      if (materialFingerprint(snapshot.manifest, current) !== snapshot.inputHash || selection?.id !== snapshot.selectionId
+        || current.lead.verificationStatus !== 'verified' || current.lead.decision === 'pass'
+        || ['applied', 'interviewing', 'offer', 'closed'].includes(current.lead.applicationStage))
         throw new JobdeskError('STALE_WORK', 'Material inputs changed during rendering. Read a fresh packet.');
       const draft = await saveManifestDraft(leadId, snapshot.id, snapshot.manifest, transactional);
       for (const artifact of artifacts) await transactional`INSERT INTO jobdesk_artifacts(id,lead_id,relative_path,content_hash,draft_version,claim_versions,kind)
@@ -105,7 +109,9 @@ export async function reviewMaterials(input: { id: string; inputHash: string; pa
   const [row] = await sql`SELECT * FROM job_material_manifests WHERE id=${input.id}`;
   if (!row) throw new JobdeskError('WORKFLOW_REJECTED', 'Materials not found.');
   const context = await refreshWorkflow(row.lead_id, sql);
-  if (row.input_hash !== input.inputHash || materialFingerprint(row.manifest, context) !== row.input_hash)
+  const [draft] = await sql`SELECT material_manifest_id FROM job_application_drafts WHERE lead_id=${row.lead_id}`;
+  if (row.input_hash !== input.inputHash || materialFingerprint(row.manifest, context) !== row.input_hash
+    || draft?.material_manifest_id !== row.id || !['current', 'needs_attention'].includes(row.state))
     throw new JobdeskError('STALE_WORK', 'Materials changed. Review the current files.');
   if (!row.artifacts.length || row.validation.content !== 'passed' || row.validation.bounds !== 'passed')
     throw new JobdeskError('WORKFLOW_REJECTED', 'Build and validate the documents before visual review.');

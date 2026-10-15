@@ -134,6 +134,41 @@ tool outputs are not usage telemetry.
 Tool-definition metadata is a separate startup cost; it is not included in the
 preparation-data comparison. End-to-end model cost requires provider counters.
 
+### Reproducible workflow stress tests
+
+`npm run test:jobdesk:fuzz` runs locally without providers, network requests, or
+private data. The regular service suite and all three CI platforms include it.
+Three fixed seeds each shuffle 64 workflow actions; an independent reference
+model checks saved results and attempts after every action. It tracks semantic
+inputs rather than calling the production fingerprint code. Commands cover
+posting/criteria/link/revision changes, approved-claim edits and revocations,
+invalid and stale saves, human decisions, exclusion restoration, unchanged
+artifact reuse, file corruption, restart, and backup/restore. Corrupt historical
+artifacts must cause backup to fail visibly, rather than produce a trusted backup.
+
+Collection fault sequences mix duplicate links, valid records, HTTP failures and
+malformed JSON-LD, then restart and resume only failed targets. Another 600 seeded
+source mutations check Unicode, JSON-LD wrappers, encoded MIME types, absent
+fields and unusable titles. Five controlled render interleavings hold a finished
+render before its commit while selection, decision, verification, criteria or
+claims change. Superseded renders must fail without replacing newer work or
+leaving orphaned files. A late review cannot reactivate superseded artifacts.
+
+Failures print the seed, failing prefix length and action trace. Set
+`JOBDESK_FUZZ_SEED` (unsigned 32-bit integer) and `JOBDESK_FUZZ_STEPS` (0–5000)
+to replay or expand a run. For example, in a POSIX shell:
+
+```sh
+JOBDESK_FUZZ_SEED=42 JOBDESK_FUZZ_STEPS=256 npm run test:jobdesk:fuzz
+```
+
+In PowerShell, set `$env:JOBDESK_FUZZ_SEED="42"` and
+`$env:JOBDESK_FUZZ_STEPS="256"` before the same npm command. The test's temporary
+stores are removed on completion; failures disclose no private inputs. This is
+bounded, reproducible fault coverage, not proof against every filesystem failure,
+power loss, future website change or possible event ordering. Rendered UI/PDF,
+migration, authentication and submission checks remain separate acceptance gates.
+
 Use `scripts/verify-jobdesk-upgrade.ts BACKUP_DIRECTORY NEW_DATA_DIRECTORY` before
 switching an installation. It verifies dump/artifact hashes, restores separately,
 compares every original row and field across all backed-up tables, and writes a

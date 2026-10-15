@@ -10,6 +10,7 @@
     "jobs:start": "node --import tsx services/jobdesk/server.ts",
     "jobs:cli": "node --import tsx services/jobdesk/cli.ts",
     "test:jobdesk": "node --import tsx --test services/jobdesk/*.test.ts",
+    "test:jobdesk:fuzz": "node --import tsx --test services/jobdesk/workflow-fuzz.test.ts",
     "jobs:mcp": "node services/jobdesk/mcp-server.mjs",
     "jobs:import": "node --import tsx scripts/import-linkedin-email-leads.ts",
     "test:jobdesk:browser": "playwright test --config=playwright.jobdesk.config.ts",

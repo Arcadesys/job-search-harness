@@ -59,6 +59,8 @@ export function parseBuiltinJob(html: string, url: string): SourceRecord {
     if (job) break;
   }
   if (!job || typeof job.title !== 'string' || typeof job.description !== 'string') throw new Error('A valid JobPosting title and description are required.');
+  const title = plain(job.title).slice(0, 250);
+  if (!title) throw new Error('A valid JobPosting title is required.');
   const postingText = plain(job.description);
   if (postingText.length < 200 || postingText.length > 30_000) throw new Error('Job description is missing, incomplete, or exceeds the supported size.');
   const places = (Array.isArray(job.jobLocation) ? job.jobLocation : [job.jobLocation]).filter(Boolean);
@@ -70,7 +72,7 @@ export function parseBuiltinJob(html: string, url: string): SourceRecord {
   const salary = typeof base?.currency === 'string' && typeof amount?.unitText === 'string'
     ? { currency: base.currency, unit: amount.unitText.toUpperCase(), minimum: numeric(amount.minValue ?? amount.value), maximum: numeric(amount.maxValue ?? amount.value) } : null;
   const organization = typeof job.hiringOrganization?.name === 'string' ? plain(job.hiringOrganization.name) : '';
-  return { source: 'builtin', sourceKey: canonical.split('/').pop()!, url: canonical, title: plain(job.title).slice(0, 250), organization,
+  return { source: 'builtin', sourceKey: canonical.split('/').pop()!, url: canonical, title, organization,
     location: locations.join(' / ') || null, postingText, snippet: postingText.slice(0, 1500), salary };
 }
 

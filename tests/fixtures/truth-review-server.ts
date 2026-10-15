@@ -19,7 +19,7 @@ async function main() {
   const built = await build({ entryPoints: ['tests/fixtures/truth-review-entry.tsx'], bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"development"' } });
   const fontCss = ':root { --font-sans: Arial, sans-serif; }';
   const globals = await readFile('services/jobdesk/ui/base.css', 'utf8');
-  const styles = await readFile('services/jobdesk/ui/jobs.css', 'utf8');
+  const styles = await readFile('services/jobdesk/ui/jobs.css', 'utf8') + '\n' + await readFile('services/jobdesk/ui/cockpit.css', 'utf8');
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://127.0.0.1:3101');

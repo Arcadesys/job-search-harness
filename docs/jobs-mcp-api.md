@@ -34,6 +34,13 @@ batched again until the user reconciles it in the cockpit.
 
 Lease, draft-binding and receipt rules are described in
 [local-jobdesk.md](local-jobdesk.md#drafts-and-submissions).
+## Assistant activity in the cockpit
+
+Every call over the local worker connection is recorded in `jobdesk_activity` and shown in the cockpit's
+**Assistant activity** panel, labelled with the MCP tool that made it. Summaries are structural only — counts,
+states, stage names and the lead they touched — never claim, posting or draft text. Only the newest 2,000 rows are
+kept. The cockpit polls `cockpit.live` for this feed, live leases and navigation counts.
+
 # Durable discovery and preparation
 
 The local owner also exposes compact work-packet preparation, source collection,

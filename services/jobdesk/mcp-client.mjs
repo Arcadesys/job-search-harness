@@ -1,10 +1,15 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { clientEndpoint } from './paths.mjs';
 import { workflowTools } from './workflow-tools.mjs';
 
+/** The MCP tool currently running, so the owner can show it in the activity feed. */
+export const currentTool = new AsyncLocalStorage();
+
 // Thin IPC consumer: never opens PGlite, accesses Keychain, or falls back online.
 export function localCall(method, args, socketPath) {
+  const tool = currentTool.getStore();
   return new Promise((resolve, reject) => {
     const req = httpRequest(
       {
@@ -44,7 +49,7 @@ export function localCall(method, args, socketPath) {
         ),
       ),
     );
-    req.end(JSON.stringify({ method, args }));
+    req.end(JSON.stringify({ method, args, ...(tool ? { tool } : {}) }));
   });
 }
 

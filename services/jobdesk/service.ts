@@ -24,6 +24,7 @@ import { runCollection, collectionStatus } from '../../lib/job-collection';
 import * as briefs from '../../lib/search-brief-store';
 import { preparationPlan } from './preparation';
 import { buildMaterials, reviewMaterials } from './materials';
+import * as cockpit from './cockpit';
 
 export const LOCAL_OWNER = 'local-user';
 
@@ -312,6 +313,10 @@ export function createService(store: JobdeskStore, options: { trustedUserActions
     'review.removeOutcome': operation(schemas['review.removeOutcome'], ([id], sql) =>
       review.removeSiteOutcome(id, sql),
     ),
+    'cockpit.live': operation(schemas['cockpit.live'], (_, sql) => cockpit.liveState(sql)),
+    'cockpit.pipeline': operation(schemas['cockpit.pipeline'], (_, sql) => cockpit.pipeline(sql)),
+    'cockpit.lead': operation(schemas['cockpit.lead'], ([id], sql) => cockpit.leadView(id, sql)),
+    'cockpit.reconcile': operation(schemas['cockpit.reconcile'], (_, sql) => cockpit.reconciliation(sql)),
   };
   return async (message: unknown) => {
     const { method, args } = rpcSchema.parse(message);

@@ -8,6 +8,7 @@ import { handleTruthReview } from '../../lib/resume-truth-http';
 import { JobdeskStore, DEFAULT_ROOT } from './store';
 import { createService, initializeService } from './service';
 import { JobdeskError } from './errors';
+import { recordActivity } from './cockpit';
 import { brokerEndpoint, isMainModule } from './paths.mjs';
 
 const windows = process.platform === 'win32';
@@ -85,7 +86,10 @@ export async function startJobdesk({
       (await readFile(new URL('./ui/base.css', import.meta.url), 'utf8')) +
       '\n' +
       (await readFile(new URL('./ui/jobs.css', import.meta.url), 'utf8')) +
-      '\n:root{--font-sans:Arial,sans-serif}';
+      '\n' +
+      (await readFile(new URL('./ui/cockpit.css', import.meta.url), 'utf8'));
+    const fonts = new Map<string, Buffer>(await Promise.all(['AtkinsonHyperlegible-Regular.ttf', 'AtkinsonHyperlegible-Bold.ttf'].map(
+      async (name) => [`/fonts/${name}`, await readFile(new URL(`../../assets/fonts/${name}`, import.meta.url))] as const)));
     let origin = '';
     web = createServer(async (req, res) => {
       try {
@@ -111,12 +115,17 @@ export async function startJobdesk({
           res.end(css);
           return;
         }
+        if (req.method === 'GET' && fonts.has(url.pathname)) {
+          res.writeHead(200, { ...PRIVATE_HEADERS, 'Content-Type': 'font/ttf' });
+          res.end(fonts.get(url.pathname));
+          return;
+        }
         if (req.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/jobs'))) {
           res.writeHead(200, {
             ...PRIVATE_HEADERS,
             'Content-Type': 'text/html',
             'Content-Security-Policy':
-              "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+              "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
           });
           res.end(
             '<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Job Search Harness</title><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>',
@@ -285,7 +294,18 @@ export async function startJobdesk({
           json(res, 200, { data: { url: `${origin}/#ticket=${ticket}` } });
           return;
         }
-        json(res, 200, { data: await service(input) });
+        // The worker names the MCP tool beside the call; it is logged, never dispatched.
+        const { tool, ...call } = input ?? {};
+        const log = (outcome: { result?: unknown; error?: unknown }) =>
+          void store.run((sql) => recordActivity(sql, { tool, method: String(call.method), args: call.args, ...outcome })).catch(() => undefined);
+        try {
+          const data = await service(call);
+          log({ result: data });
+          json(res, 200, { data });
+        } catch (error) {
+          log({ error });
+          throw error;
+        }
       } catch (error) {
         json(res, 409, {
           ...(error instanceof JobdeskError ? { code: error.code } : {}),

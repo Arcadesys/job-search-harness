@@ -74,6 +74,29 @@ test('local session, truthful approval, cancel/retry, lead review and large-text
     ).toBeVisible();
     await expect(page.getByText('Private · Local session')).toHaveText('Private · Local session');
     await expect(page).toHaveURL(`${runtime.origin}/jobs/truths`);
+    const viewport = page.viewportSize()!;
+    if (viewport.width >= 1280) {
+      await expect(page.locator('.jobsApp')).toHaveAttribute('data-feed', 'docked');
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+      await expect(page.locator('.jobsApp')).not.toHaveAttribute('data-feed', 'docked');
+      await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
+      await expect(page.locator('.jobsApp')).toHaveAttribute('data-feed', 'docked');
+    }
+    await page.setViewportSize({ width: 900, height: 844 });
+    const showActivity = page.getByRole('button', { name: 'Show activity', exact: true });
+    await showActivity.focus();
+    await page.keyboard.press('Enter');
+    const activity = page.getByRole('dialog', { name: 'Assistant activity', exact: true });
+    await expect(activity).toBeVisible();
+    await expect(activity.getByRole('button', { name: 'Close activity' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    expect(await activity.evaluate(panel => panel.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Shift+Tab');
+    expect(await activity.evaluate(panel => panel.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(activity).not.toBeVisible();
+    await expect(showActivity).toBeFocused();
+    await page.setViewportSize(viewport);
     const first = page.locator('.truthChoice input').first();
     await first.focus();
     await page.keyboard.press('Space');
@@ -131,12 +154,12 @@ test('local session, truthful approval, cancel/retry, lead review and large-text
     await expect(
       page.getByRole('link', { name: 'Local browser fixture', exact: true }),
     ).toBeVisible();
-    await page.getByRole('combobox', { name: 'Decision', exact: true }).selectOption('keep');
-    await page.getByRole('button', { name: 'Save lead review', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Decision for Local browser fixture' }).selectOption('keep');
     await page
       .getByRole('checkbox', { name: 'Local browser fixture · Fixture organization' })
       .check();
-    await page.getByRole('button', { name: 'Queue selected leads' }).click();
+    await page.getByRole('button', { name: 'Queue as a pursued batch' }).click();
+    await expect(page).toHaveURL(`${runtime.origin}/jobs`);
     await page.getByRole('link', { name: 'Today', exact: true }).click();
     await expect(page.getByText('Fixture organization · queued')).toBeVisible();
   } finally {

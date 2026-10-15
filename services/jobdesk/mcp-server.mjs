@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { createLocalApiClient } from './mcp-client.mjs';
+import { createLocalApiClient, currentTool } from './mcp-client.mjs';
 import { createInterface } from 'node:readline';
 import { isMainModule } from './paths.mjs';
 
@@ -170,7 +170,7 @@ export function createProtocolHandler({ request = createJobHuntApiClient() } = {
           isError: true,
         });
       try {
-        const result = await tool.run(message.params?.arguments ?? {});
+        const result = await currentTool.run(tool.name, () => tool.run(message.params?.arguments ?? {}));
         return reply({
           content: [{ type: 'text', text: JSON.stringify(result) }],
           structuredContent: { data: result },

@@ -291,7 +291,7 @@ test('migration drift, unknown schema, failed DDL rollback and explicit crash-lo
     await assert.rejects(migrate(store.db, directory), /checksum drift/);
     await writeFile(path.join(directory, '0001_resume_truth.sql'), original);
     await writeFile(
-      path.join(directory, '0010_failure.sql'),
+      path.join(directory, '9000_failure.sql'),
       'CREATE TABLE jobdesk_should_rollback(id text); SELECT no_such_column;',
     );
     await assert.rejects(migrate(store.db, directory));
@@ -303,7 +303,7 @@ test('migration drift, unknown schema, failed DDL rollback and explicit crash-lo
       (await store.sql`SELECT count(*)::int AS count FROM jobdesk_migrations`)[0].count,
       SHIPPED,
     );
-    await rm(path.join(directory, '0010_failure.sql'));
+    await rm(path.join(directory, '9000_failure.sql'));
     await store.sql`INSERT INTO jobdesk_migrations(version,checksum) VALUES('9999_newer.sql','fixture')`;
     await assert.rejects(migrate(store.db, directory), /newer/);
     await store.sql`DELETE FROM jobdesk_migrations WHERE version='9999_newer.sql'`;
@@ -320,7 +320,7 @@ test('migration drift, unknown schema, failed DDL rollback and explicit crash-lo
     await recoverOwnerLock(root);
     store = await JobdeskStore.open(root, directory);
     await writeFile(
-      path.join(directory, '0010_upgrade.sql'),
+      path.join(directory, '9001_upgrade.sql'),
       'CREATE TABLE jobdesk_upgrade_proof(id text);',
     );
     await store.close();
@@ -354,7 +354,7 @@ test('actual CLI restore stages a real 0008 backup artifact before migration 000
   const legacy = await JobdeskStore.open(root, directory);
   let current: JobdeskStore | undefined;
   try {
-    await initializeService(legacy);
+    // Populate a historical schema directly; today's initializer needs today's tables.
     await loadSample(legacy);
     const call = createService(legacy);
     const claims = (await call({ method: 'truth.list', args: [] })) as any[];

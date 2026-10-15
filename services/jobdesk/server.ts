@@ -60,6 +60,8 @@ export async function startJobdesk({
   try {
     await initializeService(store);
     const service = createService(store);
+    // Transport-derived capability, never accepted from RPC/model arguments.
+    const browserService = createService(store, { trustedUserActions: true });
     const sessions = new Map<string, { csrf: string; expires: number }>();
     const tickets = new Map<string, number>();
     const socketPath = brokerEndpoint(store.root);
@@ -220,7 +222,7 @@ export async function startJobdesk({
             json(res, 403, { error: 'This operation requires the local worker connection.' });
             return;
           }
-          json(res, 200, { data: await service(input) });
+          json(res, 200, { data: await browserService(input) });
           return;
         }
         if (req.method === 'GET' && url.pathname.startsWith('/artifacts/')) {
@@ -230,7 +232,7 @@ export async function startJobdesk({
             return;
           }
           const rows = await store.run(
-            (sql) => sql`SELECT relative_path FROM jobdesk_artifacts WHERE id=${id}`,
+            (sql) => sql`SELECT relative_path,kind FROM jobdesk_artifacts WHERE id=${id}`,
           );
           if (!rows[0]) {
             json(res, 404, { error: 'Artifact not found.' });
@@ -239,7 +241,7 @@ export async function startJobdesk({
           res.writeHead(200, {
             ...PRIVATE_HEADERS,
             'Content-Type': 'application/pdf',
-            'Content-Disposition': 'attachment; filename="application-review-packet.pdf"',
+            'Content-Disposition': `attachment; filename="${rows[0].kind === 'resume' ? 'resume' : rows[0].kind === 'outreach' ? 'outreach' : 'application-review-packet'}.pdf"`,
           });
           res.end(await readFile(path.join(store.root, rows[0].relative_path)));
           return;

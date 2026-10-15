@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 export default defineConfig({
   testDir: './tests/browser',
-  testMatch: 'local-jobdesk.spec.ts',
+  testMatch: ['local-jobdesk.spec.ts', 'durable-workflow.spec.ts'],
   workers: 1,
   fullyParallel: false,
   outputDir: path.join(process.platform === 'win32' ? tmpdir() : '/tmp', 'job-search-harness-browser'),

@@ -198,3 +198,10 @@
 .truthGroupTools { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:.5rem 1rem; }
 .truthGroupTools .truthFilters[open] { flex-basis:100%; }
 .truthActions .jobsButtonPrimary { min-height:64px; font-size:1.35rem; }
+/* Workflow controls remain readable at large text sizes and narrow widths. */
+.workflowActions { display: flex; flex-wrap: wrap; gap: 1rem; margin-block: 1rem; }
+.workflowCards { display: grid; gap: 1.5rem; }
+.workflowRun { border-top: 2px solid currentColor; margin-top: 1.5rem; padding-top: 1rem; overflow-wrap: anywhere; }
+.workflowRun button, .workflowActions button { min-height: 48px; }
+.workflowCheck { display: flex; align-items: flex-start; gap: .75rem; margin-block: 1rem; }
+.workflowCheck input { min-width: 28px; min-height: 28px; }

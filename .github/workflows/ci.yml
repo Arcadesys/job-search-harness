@@ -31,6 +31,7 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run test:jobdesk
+      - run: npm run eval:resumes
       - run: npx playwright install --with-deps chromium
       - run: npm run test:jobdesk:browser
       - run: npm run test:truths

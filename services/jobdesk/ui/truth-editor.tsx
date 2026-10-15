@@ -70,6 +70,7 @@ export default function TruthEditor({ claims }: { claims: ReviewClaim[] }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const allCheckbox = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false);
+  const returnFocus = useRef<string | null>(null);
   const pairs = useMemo(() => relatedTruthPairs(items), [items]);
   const pairedCopies = new Set(pairs.values());
   const matches = (item: ReviewClaim) => (filter === 'all' || item.reviewStatus === filter) && `${item.claim} ${item.sourceNote}`.toLocaleLowerCase().includes(search.toLocaleLowerCase());
@@ -103,6 +104,12 @@ export default function TruthEditor({ claims }: { claims: ReviewClaim[] }) {
   useLayoutEffect(() => {
     if (message && message !== 'Saving…') status.current?.focus();
   }, [message]);
+  useLayoutEffect(() => {
+    if (editingId !== null || returnFocus.current === null) return;
+    const id = returnFocus.current;
+    returnFocus.current = null;
+    document.querySelector<HTMLButtonElement>(`[data-truth-id="${CSS.escape(id)}"] .truthRowMain button`)?.focus();
+  }, [editingId]);
 
   function selectGroup(id: string) {
     setActiveId(id); setSelected(new Set()); setExpanded(new Set()); setSearch(''); setFilter('all'); setMessage(''); setError(''); setConflicts([]); setRetry(null);
@@ -112,9 +119,8 @@ export default function TruthEditor({ claims }: { claims: ReviewClaim[] }) {
     setRetry(null);
   }
   function closeEdit() {
-    const id = editingId;
+    returnFocus.current = editingId;
     setEditingId(null); setDraft(null); setRetry(null);
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-truth-id="${CSS.escape(id ?? '')}"] .truthRowMain button`)?.focus());
   }
   async function save(changes: TruthChange[], approval = false, undoing = false) {
     if (inFlight.current) return;

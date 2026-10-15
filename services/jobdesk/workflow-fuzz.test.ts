@@ -203,6 +203,7 @@ for (const seed of seeds) {
         assert.equal(repeat.reused, true); assert.deepEqual(repeat.artifacts, built.artifacts);
         await rpc('workflow.review', { id: built.id, inputHash: built.inputHash, passed: true, note: 'Synthetic state-machine assertion; rendered QA is separate.' });
         const [draft] = await store.sql`SELECT updated_at::text AS version FROM job_application_drafts WHERE lead_id=${leadId}`;
+        await rpc('evaluation.run', { leadId });
         await rpc('draft.approve', leadId, draft.version);
       },
       corrupt: async () => {

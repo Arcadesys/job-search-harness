@@ -1,3 +1,4 @@
+import { evaluateArtifact, recruiterPacket, saveRecruiterReview, readArtifactReviews } from './artifact-review';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { parameterizedSql, type Sql } from '../../lib/job-storage';
@@ -50,6 +51,7 @@ export async function initializeService(store: JobdeskStore) {
         FROM interrupted WHERE i.id=interrupted.item_id AND i.status<>'submitted'`;
     await sql`UPDATE job_search_runs SET status='failed',error_message='Jobdesk restarted during scan; retry manually.',completed_at=now() WHERE status='running'`;
     await sql`UPDATE job_collection_runs SET state='partial',errors=errors || '["Owner restarted; resume saved pending targets."]'::jsonb,updated_at=now() WHERE state='running'`;
+    await sql`UPDATE job_work_stages SET state='needs_attention',error='Owner restarted during evaluation; retry explicitly.' WHERE stage='resume_evaluation' AND state='pending'`;
     await sql`UPDATE job_material_manifests SET state='needs_attention',error='Owner restarted during rendering; one targeted repair is available.' WHERE state='pending'`;
     await sql`WITH interrupted AS (UPDATE jobdesk_model_runs SET state='interrupted' WHERE state='pending' RETURNING usage_month)
       UPDATE job_ai_usage SET estimated_usd=budget_usd,unknown_cost_requests=unknown_cost_requests+1
@@ -81,7 +83,10 @@ export function createService(store: JobdeskStore, options: { trustedUserActions
       }
       return result;
     }),
-    'preparation.plan': operation(schemas['preparation.plan'], ([input], sql) => preparationPlan(input.leadId, sql)),
+    'reviews.read': operation(schemas['reviews.read'], ([input], sql) => readArtifactReviews(input.leadId, sql, store.root)),
+    'recruiter.packet': operation(schemas['recruiter.packet'], ([input], sql) => recruiterPacket(input, sql, store.root)),
+    'recruiter.save': operation(schemas['recruiter.save'], ([input], sql) => saveRecruiterReview(input, sql, store.root)),
+    'preparation.plan': operation(schemas['preparation.plan'], ([input], sql) => preparationPlan(input.leadId, sql, store.root)),
     'collection.run': operation(schemas['collection.run'], () => { throw new Error('Collection must run outside the store queue.'); }),
     'workflow.build': operation(schemas['workflow.build'], () => { throw new Error('Rendering must run outside the store queue.'); }),
     'collection.status': operation(schemas['collection.status'], (_, sql) => collectionStatus(sql)),
@@ -312,6 +317,7 @@ export function createService(store: JobdeskStore, options: { trustedUserActions
     const { method, args } = rpcSchema.parse(message);
     if (['brief.addMessage', 'brief.approve', 'brief.cancelDraft'].includes(method) && !options.trustedUserActions)
       throw new JobdeskError('WORKFLOW_REJECTED', 'This operation requires an explicit authenticated cockpit action.');
+    if (method === 'evaluation.run') return evaluateArtifact(schemas['evaluation.run'].parse(args)[0], store);
     if (method === 'collection.run') return runCollection(schemas['collection.run'].parse(args)[0], store);
     if (method === 'workflow.build') { const [input] = schemas['workflow.build'].parse(args); return buildMaterials(input.leadId, store, input.repair); }
     if (method === 'search.run') {
@@ -328,7 +334,7 @@ export function createService(store: JobdeskStore, options: { trustedUserActions
       throw new Error('This operation requires the owner process connection.');
     const handler = operations[method];
     return store.run((sql) =>
-      ['brief.addMessage', 'brief.propose', 'brief.approve', 'brief.cancelDraft', 'preparation.plan', 'truth.addProject', 'truth.importResume', 'truth.importText', 'search.save', 'submission.record', 'draft.edit', 'draft.saveManual', 'draft.approve', 'submission.begin', 'submission.notSubmitted', 'workflow.packet', 'workflow.save', 'workflow.configure', 'exclusions.restore', 'workflow.review'].includes(method)
+      ['reviews.read', 'recruiter.packet', 'recruiter.save', 'brief.addMessage', 'brief.propose', 'brief.approve', 'brief.cancelDraft', 'preparation.plan', 'truth.addProject', 'truth.importResume', 'truth.importText', 'search.save', 'submission.record', 'draft.edit', 'draft.saveManual', 'draft.approve', 'submission.begin', 'submission.notSubmitted', 'workflow.packet', 'workflow.save', 'workflow.configure', 'exclusions.restore', 'workflow.review'].includes(method)
         ? store.db.transaction((tx) => handler(args, parameterizedSql(tx)))
         : handler(args, sql),
     );

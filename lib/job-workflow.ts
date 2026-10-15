@@ -128,6 +128,8 @@ export async function refreshWorkflow(leadId: string, sql: Sql) {
   for (const manifest of manifests) {
     if (materialFingerprint(manifest.manifest, context) === manifest.input_hash) continue;
     await sql`UPDATE job_material_manifests SET state='stale',updated_at=clock_timestamp() WHERE id=${manifest.id}`;
+    await sql`UPDATE job_work_stages SET state='stale',updated_at=clock_timestamp() WHERE lead_id=${leadId}
+      AND stage IN ('resume_evaluation','recruiter_review') AND state<>'stale'`;
     await sql`UPDATE job_application_drafts SET review_status='review_required' WHERE material_manifest_id=${manifest.id}`;
     await sql`UPDATE jobdesk_artifacts SET approval_state='superseded' WHERE id IN
       (SELECT (x->>'id')::uuid FROM jsonb_array_elements(${JSON.stringify(manifest.artifacts)}::jsonb) x)`;
@@ -180,6 +182,7 @@ export async function getWorkPacket(leadId: string, stage: 'assessment' | 'selec
 
 export async function saveWorkResult(packetId: string, inputHash: string, result: unknown, sql: Sql) {
   const [work] = await sql`SELECT * FROM job_work_stages WHERE id=${packetId}`;
+  if (work && !['assessment', 'selection'].includes(work.stage)) throw new JobdeskError('WORKFLOW_REJECTED', 'Use the dedicated artifact-review result endpoint.');
   if (!work) throw new JobdeskError('WORKFLOW_REJECTED', 'Work packet not found.');
   const context = await refreshWorkflow(work.lead_id, sql);
   const currentHash = work.stage === 'assessment' ? context.assessmentHash : context.selectionHash;
@@ -344,6 +347,8 @@ export async function assertCurrentMaterial(draft: SqlRow, sql: Sql, root: strin
   if (!manifest || manifest.state !== 'current' || manifest.validation?.visual !== 'passed')
     throw new JobdeskError('STALE_DRAFT', 'Materials need current content and rendered review before approval or submission.');
   await verifyArtifactFiles(manifest.artifacts, root);
+  const { assertCurrentEvaluation } = await import('../services/jobdesk/artifact-review');
+  await assertCurrentEvaluation(draft.lead_id, sql, root);
   const [saved] = await sql`SELECT resume_variant,outreach,truth_snapshot FROM job_application_drafts WHERE lead_id=${draft.lead_id}`;
   const expected = manifest.manifest.sections.map((section: any) => `${section.heading}\n${section.lines.join('\n')}`).join('\n\n');
   if (!saved || saved.resume_variant !== expected || saved.outreach !== manifest.manifest.outreach || fingerprint(saved.truth_snapshot) !== fingerprint(manifest.manifest.claims))

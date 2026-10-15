@@ -65,6 +65,7 @@ test('compact packets, exact ordering, separate exports, cache reuse, approval, 
     assert.equal(built.validation.visual, 'pending');
     await assert.rejects(call({ method: 'draft.approve', args: [id, built.draftVersion] }), /rendered review/);
     await call({ method: 'workflow.review', args: [{ id: built.id, inputHash: built.inputHash, passed: true, note: 'Synthetic test inspection; actual rendered QA runs separately.' }] });
+    await call({ method: 'evaluation.run', args: [{ leadId: id }] });
     await call({ method: 'draft.approve', args: [id, built.draftVersion] });
     const [manifest] = await store.sql`SELECT manifest FROM job_material_manifests WHERE id=${built.id}`;
     const lines = manifest.manifest.sections.flatMap((s: any) => s.lines);

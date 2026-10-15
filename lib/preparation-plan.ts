@@ -15,16 +15,19 @@ export interface PreparationPlanInput {
   material?: PreparationStage & { visual?: string };
   draftApproved: boolean;
   materialBlocker?: string;
+  evaluation?: PreparationStage & { passed?: boolean };
+  recruiter?: PreparationStage;
 }
 
 export type PreparationAction =
   | 'reconcile_submission' | 'complete' | 'skipped' | 'review_search_brief'
   | 'verify_posting' | 'assess' | 'choose_job' | 'select_claims' | 'build_materials'
   | 'wait_for_render' | 'repair_materials' | 'needs_attention' | 'review_materials'
+  | 'evaluate_resume' | 'wait_for_evaluation' | 'review_recruiter'
   | 'approve_draft' | 'ready_for_user_submission';
 
 export interface PreparationToolHint {
-  name: 'job_hunt_get_work_packet' | 'job_hunt_build_materials' | 'job_hunt_review_materials';
+  name: 'job_hunt_get_work_packet' | 'job_hunt_build_materials' | 'job_hunt_review_materials' | 'job_hunt_evaluate_resume' | 'job_hunt_recruiter_packet';
   stage?: 'assessment' | 'selection';
   repair?: true;
 }
@@ -113,6 +116,13 @@ export function planPreparation(input: PreparationPlanInput): PreparationPlan {
     return result('review_materials', 'Inspect the actual rendered files before recording their visual review.', true, false,
       { name: 'job_hunt_review_materials' });
   }
+  const evaluation = input.evaluation;
+  if (!evaluation || evaluation.state === 'stale') return result('evaluate_resume', 'Run deterministic checks against the exact saved résumé.', true, false, { name: 'job_hunt_evaluate_resume' });
+  if (evaluation.state === 'pending') return result('wait_for_evaluation', 'A saved evaluation is in progress; do not duplicate it.');
+  if (evaluation.state !== 'complete' || evaluation.passed !== true) return result('needs_attention', 'Résumé evaluation failed or is incomplete. Inspect its findings before continuing.', false, true);
+  if (!input.recruiter || input.recruiter.state === 'stale' || (input.recruiter.state === 'pending' && repairAvailable(input.recruiter.attempts)))
+    return result('review_recruiter', 'Record an evidence-cited advisory recruiter review of the evaluated artifact.', true, false, { name: 'job_hunt_recruiter_packet' });
+  if (input.recruiter.state !== 'complete') return result('needs_attention', 'Advisory review needs attention; it has no authority to approve or reject an application.', false, true);
   if (!input.draftApproved) {
     return result('approve_draft', 'The user must approve the current draft and its bound materials.', false, true);
   }

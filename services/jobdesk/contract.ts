@@ -1,3 +1,4 @@
+import { evaluateArtifactSchema, recruiterPacketSchema, recruiterSaveSchema } from './artifact-review';
 import { z } from 'zod';
 import { settingsSchema } from '../../lib/jobdesk-settings';
 import { MAX_SEARCHES, searchQuerySchema } from '../../lib/job-discovery';
@@ -19,6 +20,10 @@ export const methodSchemas = {
   'brief.propose': z.tuple([briefProposeSchema]),
   'brief.approve': z.tuple([briefApproveSchema]),
   'brief.cancelDraft': z.tuple([briefCancelSchema]),
+  'reviews.read': z.tuple([z.object({ leadId: z.string().regex(/^[a-f0-9]{64}$/) }).strict()]),
+  'evaluation.run': z.tuple([evaluateArtifactSchema]),
+  'recruiter.packet': z.tuple([recruiterPacketSchema]),
+  'recruiter.save': z.tuple([recruiterSaveSchema]),
   'preparation.plan': z.tuple([z.object({ leadId: id }).strict()]),
   'collection.run': z.tuple([collectionRequestSchema]),
   'collection.status': z.tuple([]),

@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "package:macos": "node packaging/macos/build.mjs",
+    "test:installer": "node --test packaging/macos/install.test.mjs",
     "start": "node --import tsx services/jobdesk/server.ts",
     "lint": "eslint .",
     "test": "tsx --test lib/*.test.ts",

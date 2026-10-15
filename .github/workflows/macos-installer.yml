@@ -22,21 +22,9 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - name: Installer unit tests
-        run: node --test packaging/macos/install.test.mjs
-      - name: Assemble self-contained ZIP
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist/job-search-harness-macos/payload/app
-          cp "$(command -v node)" dist/job-search-harness-macos/payload/node
-          cp package.json package-lock.json dist/job-search-harness-macos/payload/app/
-          cp -R lib services db assets packaging dist/job-search-harness-macos/payload/app/
-          cp -R node_modules dist/job-search-harness-macos/payload/app/
-          cp "packaging/macos/Install Job Search Harness.command" dist/job-search-harness-macos/
-          chmod 755 dist/job-search-harness-macos/payload/node "dist/job-search-harness-macos/Install Job Search Harness.command"
-          cd dist
-          ditto -c -k --sequesterRsrc --keepParent job-search-harness-macos "job-search-harness-macos-${{ matrix.arch }}.zip"
+      - run: npm run test:installer
+      - name: Assemble and check self-contained ZIP
+        run: npm run package:macos
       - uses: actions/upload-artifact@v4
         with:
           name: job-search-harness-macos-${{ matrix.arch }}

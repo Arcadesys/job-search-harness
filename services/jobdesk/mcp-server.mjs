@@ -2,7 +2,7 @@
 
 import { createLocalApiClient } from './mcp-client.mjs';
 import { createInterface } from 'node:readline';
-import { pathToFileURL } from 'node:url';
+import { isMainModule } from './paths.mjs';
 
 const STATUSES = ['preparing', 'awaiting_approval', 'blocked', 'skipped'];
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -210,7 +210,7 @@ export async function runStdio({
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
   runStdio().catch(() => {
     process.stderr.write('Job Hunt MCP server could not start.\n');
     process.exitCode = 1;

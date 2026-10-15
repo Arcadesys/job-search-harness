@@ -12,3 +12,4 @@ export function defaultDataRoot(options?: {
 export function brokerEndpoint(root: string, options?: { platform?: Platform }): string;
 export function clientEndpoint(options?: { platform?: Platform; env?: Env }): string;
 export function browserCommand(url: string, platform?: Platform): [string, string[]];
+export function isMainModule(moduleURL: string, entry?: string): boolean;

@@ -74,6 +74,29 @@ test('local session, truthful approval, cancel/retry, lead review and large-text
     ).toBeVisible();
     await expect(page.getByText('Private · Local session')).toHaveText('Private · Local session');
     await expect(page).toHaveURL(`${runtime.origin}/jobs/truths`);
+    const viewport = page.viewportSize()!;
+    if (viewport.width >= 1280) {
+      await expect(page.locator('.jobsApp')).toHaveAttribute('data-feed', 'docked');
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+      await expect(page.locator('.jobsApp')).not.toHaveAttribute('data-feed', 'docked');
+      await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
+      await expect(page.locator('.jobsApp')).toHaveAttribute('data-feed', 'docked');
+    }
+    await page.setViewportSize({ width: 900, height: 844 });
+    const showActivity = page.getByRole('button', { name: 'Show activity', exact: true });
+    await showActivity.focus();
+    await page.keyboard.press('Enter');
+    const activity = page.getByRole('dialog', { name: 'Assistant activity', exact: true });
+    await expect(activity).toBeVisible();
+    await expect(activity.getByRole('button', { name: 'Close activity' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    expect(await activity.evaluate(panel => panel.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Shift+Tab');
+    expect(await activity.evaluate(panel => panel.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(activity).not.toBeVisible();
+    await expect(showActivity).toBeFocused();
+    await page.setViewportSize(viewport);
     const first = page.locator('.truthChoice input').first();
     await first.focus();
     await page.keyboard.press('Space');

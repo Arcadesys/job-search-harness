@@ -1,5 +1,7 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, shell, Tray } from 'electron';
-import { cp, mkdir, readdir, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { cp, mkdir, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { brokerCall } from '../services/jobdesk/client';
 import { brokerEndpoint, defaultDataRoot } from '../services/jobdesk/paths.mjs';
@@ -44,6 +46,21 @@ async function prepareMcp() {
     args: [path.join(target, 'mcp-server.mjs')],
     env: { ELECTRON_RUN_AS_NODE: '1', JOBDESK_APP: appCommand(), ...(appArgs().length ? { JOBDESK_APP_ARGS: JSON.stringify(appArgs()) } : {}), ...(process.env.JOBDESK_DATA_DIR ? { JOBDESK_DATA_DIR: dataRoot } : {}) },
   });
+}
+
+/** The earlier macOS installer ran the owner from a LaunchAgent. Stop that one service by its
+ * exact label, keep its plist as a .retired copy, and let this app own the same data folder.
+ * Its MCP entry is repaired to point here by repairConnections. */
+const LEGACY_AGENT = 'me.thearcades.job-search-harness';
+async function retireMacInstaller() {
+  if (process.platform !== 'darwin') return;
+  const plist = path.join(homedir(), 'Library', 'LaunchAgents', `${LEGACY_AGENT}.plist`);
+  const text = await readFile(plist, 'utf8').catch(() => '');
+  if (!text.includes(`<string>${LEGACY_AGENT}</string>`)) return;
+  spawnSync('/bin/launchctl', ['bootout', `gui/${process.getuid?.()}`, plist], { stdio: 'ignore' });
+  for (let tries = 0; tries < 40 && await brokerCall('health', [], socketPath).then(() => true, () => false); tries++)
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  await rename(plist, `${plist}.retired`);
 }
 
 async function startOwner() {
@@ -127,6 +144,7 @@ else {
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(process.platform === 'darwin' ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]) : null);
     await prepareMcp();
+    await retireMacInstaller().catch(() => undefined);
     await startOwner();
     if (!smoke) createTray();
     if (!background) await showCockpit();

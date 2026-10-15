@@ -36,7 +36,7 @@ export async function buildMaterials(leadId: string, store: JobdeskStore, repair
     const manifest = makeMaterialManifest(selectionSchema.parse(selection.result), context);
     const inputHash = materialFingerprint(manifest, context);
     const [prior] = await sql`SELECT * FROM job_material_manifests WHERE lead_id=${leadId} AND input_hash=${inputHash}`;
-    if (prior && ['current','stale'].includes(prior.state)) {
+    if (prior && ['current','stale'].includes(prior.state) && !repair) {
       try {
         await verifyArtifactFiles(prior.artifacts, store.root);
         const [bound] = await sql`SELECT material_manifest_id FROM job_application_drafts WHERE lead_id=${leadId}`;

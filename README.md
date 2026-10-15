@@ -39,6 +39,9 @@ it, and your assistant starts it again if it is closed.
 > unidentified developer. On a Mac, right-click the app, choose **Open**, then **Open** again.
 > On Windows, choose **More info**, then **Run anyway**.
 
+Used the earlier macOS installer preview? Install the app; it takes over the same data and
+Claude connection on first launch ([details](docs/desktop-release.md#upgrading-from-the-macos-installer-preview)).
+
 Prefer the command line, or contributing? See [Development](#development); a source checkout
 needs [Node.js 22 or later](https://nodejs.org/) and connects with
 `node /full/path/to/services/jobdesk/mcp-server.mjs` as the MCP command.

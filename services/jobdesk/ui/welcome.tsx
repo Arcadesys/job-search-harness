@@ -3,7 +3,7 @@ import { PageHead } from './common';
 import type { Method } from '../contract';
 
 type Rpc = (method: Method, args?: unknown[]) => Promise<any>;
-type Assistant = { id: 'claude' | 'codex'; name: string; detected: boolean; connected: boolean; current: boolean; error: string };
+type Assistant = { id: 'claude' | 'codex'; name: string; detected: boolean; connected: boolean; current: boolean; foreign: boolean; error: string };
 const STEPS = ['Connect your AI', 'What you want', 'Your résumé', 'Done'];
 const DOWNLOADS: Record<Assistant['id'], [string, string]> = {
   claude: ['Get Claude Desktop', 'https://claude.ai/download'],
@@ -29,10 +29,10 @@ function ConnectStep({ data, rpc, next }: { data: any; rpc: Rpc; next: () => voi
   const [assistants, setAssistants] = useState<Assistant[]>(data.assistants);
   const [message, setMessage] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [provider, setProvider] = useState<'anthropic' | 'openai'>(data.settings.drafting.provider === 'openai' ? 'openai' : 'anthropic');
-  const connect = async (assistant: Assistant) => {
+  const connect = async (assistant: Assistant, replace = false) => {
     setBusy(true); setError(''); setMessage('');
     try {
-      const result = await rpc('assistant.connect', [assistant.id]);
+      const result = await rpc('assistant.connect', replace ? [assistant.id, { replace }] : [assistant.id]);
       setAssistants(await rpc('assistant.status'));
       setMessage(`${assistant.name} is connected. ${result.restart}`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not connect.'); } finally { setBusy(false); }
@@ -48,11 +48,14 @@ function ConnectStep({ data, rpc, next }: { data: any; rpc: Rpc; next: () => voi
       {assistants.map((assistant) => <div className="ck-card" key={assistant.id}>
         <div className="ck-card-head"><h3 style={{ margin: 0 }}>{assistant.name}</h3>
           <strong className={assistant.connected ? 't-ok' : assistant.detected ? 't-accent' : 't-muted'}>
-            {assistant.connected ? 'Connected' : assistant.detected ? 'Found on this computer' : 'Not found'}</strong></div>
+            {assistant.foreign ? 'Set up differently' : assistant.connected ? 'Connected' : assistant.detected ? 'Found on this computer' : 'Not found'}</strong></div>
+        {assistant.foreign && <p style={{ margin: 0 }}>It already has a <q>job-search-harness</q> connection that this app did not create. Replace it only if you no longer use that setup.</p>}
         {assistant.error && <p className="t-bad" style={{ margin: 0 }}>{assistant.error}</p>}
         {!assistant.detected && !assistant.connected && <p className="ck-muted" style={{ margin: 0 }}>Install it first, then come back and connect. <a href={DOWNLOADS[assistant.id][1]}>{DOWNLOADS[assistant.id][0]}</a></p>}
-        <button type="button" className={`ck-btn${assistant.connected ? '' : ' ck-btn--primary'}`} style={{ alignSelf: 'flex-start' }} disabled={busy}
-          onClick={() => void connect(assistant)}>{assistant.connected ? `Reconnect ${assistant.name}` : `Connect ${assistant.name}`}</button>
+        {assistant.foreign
+          ? <button type="button" className="ck-btn" style={{ alignSelf: 'flex-start' }} disabled={busy} onClick={() => void connect(assistant, true)}>{`Replace the ${assistant.name} connection`}</button>
+          : <button type="button" className={`ck-btn${assistant.connected ? '' : ' ck-btn--primary'}`} style={{ alignSelf: 'flex-start' }} disabled={busy}
+            onClick={() => void connect(assistant)}>{assistant.connected ? `Reconnect ${assistant.name}` : `Connect ${assistant.name}`}</button>}
       </div>)}
     </div>
     <details className="ck-card">

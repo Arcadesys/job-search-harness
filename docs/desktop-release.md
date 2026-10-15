@@ -24,6 +24,20 @@ source checkout runs. It adds no network calls of its own and has no automatic u
   mammoth) and never stored. The person checks the text before any line becomes a claim.
 - Chromium's spellchecker is off on Linux, where it would download dictionaries.
 
+## Upgrading from the macOS installer preview
+
+The desktop app replaces the earlier ZIP + LaunchAgent preview. On its first launch on a Mac it:
+
+1. Stops the preview's `me.thearcades.job-search-harness` LaunchAgent by that exact label, waits for
+   its owner to close, and renames the plist to `.plist.retired`. Nothing else is stopped.
+2. Opens the same private data folder, so truths, leads, backups and keys carry over. An owner
+   restart marks any pending submission uncertain, exactly as before.
+3. Repoints the preview's Claude Desktop entry at the app. An entry this app did not write is
+   never replaced without the person choosing **Replace** in the setup guide.
+
+The preview's files in `~/Library/Application Support/Job Search Harness App/` are left in place
+and can be deleted afterwards.
+
 ## Building
 
 ```sh

@@ -69,7 +69,11 @@ test('first run: connect Claude Desktop, preferences, résumé upload, live MCP 
     expect(launch.env.ELECTRON_RUN_AS_NODE).toBe('1');
     const setup = await callTool(launch, home, 'job_hunt_setup_status');
     expect(setup.result.structuredContent.data.truths.total).toBe(0);
+    // At the default 125% zoom a 1440-pixel window is too narrow to dock the panel.
+    const showActivity = window.getByRole('button', { name: 'Show activity' });
+    if (await showActivity.isVisible()) await showActivity.click();
     await expect(window.getByRole('list', { name: 'Recent tool calls' })).toContainText('job_hunt_setup_status', { timeout: 15_000 });
+    await window.getByRole('button', { name: 'Close activity' }).click();
 
     await window.getByRole('button', { name: 'Continue' }).click();
     await window.getByRole('textbox', { name: 'Role or field' }).fill('Data analyst');

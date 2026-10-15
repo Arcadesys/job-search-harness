@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { brokerCall } from '../services/jobdesk/client';
 import { brokerEndpoint, defaultDataRoot } from '../services/jobdesk/paths.mjs';
+import { assertCompatibleOwner } from './owner-check';
 
 /** The desktop app: owns the private jobdesk, shows the cockpit in its own window, and stays
  * in the tray so the user's assistant can reach it. Nothing here talks to the network. */
@@ -70,9 +71,13 @@ async function startOwner() {
   try {
     runtime = await start();
   } catch (error) {
-    // A background owner started from the command line already holds the database: use it.
-    const running = await brokerCall('health', [], socketPath).then(() => true, () => false);
-    if (!running) {
+    // A background owner started from the command line already holds the database: use it,
+    // but only when it is the same release.
+    const health = await brokerCall('health', [], socketPath).catch(() => null);
+    if (health) {
+      const { migrationsDirectory } = await import('../services/jobdesk/migrate');
+      await assertCompatibleOwner(health, migrationsDirectory());
+    } else {
       // After a force quit or power loss the lock outlives its process. Recovery proves the
       // old process is gone before removing it, and never touches leases or submissions.
       await recoverOwnerLock(dataRoot).catch(() => { throw error; });
@@ -91,14 +96,20 @@ async function showCockpit() {
     window = new BrowserWindow({
       width: 1440, height: 960, minWidth: 380, minHeight: 500, show: false, backgroundColor: '#10131d',
       title: 'Job Search Harness', autoHideMenuBar: true,
-      webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: process.platform !== 'linux' },
+      // Opens at 125% for legibility; View → Zoom (Ctrl/Cmd + and −) adjusts it.
+      webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: process.platform !== 'linux', zoomFactor: 1.25 },
     });
+    // The cockpit needs no camera, microphone, location or notifications.
+    window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+    window.webContents.session.setPermissionCheckHandler(() => false);
     const origin = new URL(url).origin;
     const external = (target: string) => { if (/^https?:/.test(target)) void shell.openExternal(target); };
     window.webContents.setWindowOpenHandler(({ url: target }) => { external(target); return { action: 'deny' }; });
-    window.webContents.on('will-navigate', (event, target) => {
-      if (new URL(target).origin !== origin) { event.preventDefault(); external(target); }
-    });
+    const guard = (event: Electron.Event, target: string) => {
+      if (!target.startsWith(`${origin}/`)) { event.preventDefault(); external(target); }
+    };
+    window.webContents.on('will-navigate', guard);
+    window.webContents.on('will-redirect', guard);
     // macOS and Windows keep running in the menu bar or tray. Some Linux desktops hide tray
     // icons, so there closing quits; the assistant's MCP adapter restarts the app when needed.
     window.on('close', (event) => {
@@ -142,7 +153,14 @@ else {
   app.on('window-all-closed', () => { if (!tray || process.platform === 'linux') void quit(); });
   app.on('before-quit', (event) => { if (!quitting) { event.preventDefault(); void quit(); } });
   app.whenReady().then(async () => {
-    Menu.setApplicationMenu(process.platform === 'darwin' ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]) : null);
+    // On Windows and Linux the menu bar stays hidden until Alt; its zoom shortcuts always work.
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : [{ role: 'fileMenu' as const }]),
+      { role: 'editMenu' },
+      { label: 'View', submenu: [{ role: 'reload' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
+        { type: 'separator' }, { role: 'togglefullscreen' }] },
+      { role: 'windowMenu' },
+    ]));
     await prepareMcp();
     await retireMacInstaller().catch(() => undefined);
     await startOwner();

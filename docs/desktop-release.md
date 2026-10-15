@@ -23,6 +23,10 @@ source checkout runs. It adds no network calls of its own and has no automatic u
 - Résumé files are posted to `/api/resume/extract`, read in memory (PDF with pdf.js, Word with
   mammoth) and never stored. The person checks the text before any line becomes a claim.
 - Chromium's spellchecker is off on Linux, where it would download dictionaries.
+- The window opens at 125% zoom; View → Zoom (Ctrl/Cmd + and −) adjusts it. It refuses every
+  permission prompt and keeps navigation and redirects on the cockpit's own origin.
+- A running owner is reused only when its migrations match this release exactly. Otherwise the
+  app explains that another version is running and changes nothing.
 
 ## Upgrading from the macOS installer preview
 

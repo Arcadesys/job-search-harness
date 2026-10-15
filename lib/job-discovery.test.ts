@@ -55,7 +55,7 @@ test('Google Alert feed URLs are constrained and Atom entries retain original po
   assert.throws(() => parseGoogleAlertsFeed('<!DOCTYPE feed><feed/>'), /invalid XML/);
 });
 
-test('duplicate scan results update last-checked without replacing review or pipeline state', async () => {
+test('duplicate scan results refresh source fields without replacing review or pipeline state', async () => {
   const statements: string[] = [];
   let payload = '';
   const fake = tagged(async (text, values) => { statements.push(text); payload = String(values[0]); return [{ inserted: false }]; });
@@ -65,7 +65,8 @@ test('duplicate scan results update last-checked without replacing review or pip
   ], 'ai-remote', fake);
   assert.deepEqual(outcome, { seen: 1, created: 0 });
   assert.equal(JSON.parse(payload).length, 1);
-  assert.match(statements[0], /ON CONFLICT \(source_url\) DO UPDATE SET last_checked_at=now\(\),updated_at=now\(\)/);
+  assert.match(statements[0], /ON CONFLICT \(source_url\) DO UPDATE SET title=EXCLUDED.title,snippet=EXCLUDED.snippet/);
+  assert.match(statements[0], /last_seen_at=now\(\)/);
   assert.doesNotMatch(statements[0], /verification_status\s*=|decision\s*=/);
 });
 

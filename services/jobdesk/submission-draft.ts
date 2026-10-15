@@ -11,7 +11,7 @@ export type DraftBinding = z.infer<typeof draftBindingSchema>;
 export async function readSubmissionDraft(owner: string, itemId: string, sql: Sql) {
   const [draft] = await sql`SELECT d.id::text AS "draftId",d.updated_at::text AS "draftVersion",
     d.review_status AS "draftReviewStatus",d.resume_variant AS "resumeVariant",d.outreach,
-    d.claim_ids AS "claimIds",d.truth_snapshot AS "truthSnapshot",
+    d.claim_ids AS "claimIds",d.truth_snapshot AS "truthSnapshot",d.material_manifest_id AS "materialManifestId",
     (jsonb_array_length(d.truth_snapshot)>0 AND NOT EXISTS (
       SELECT 1 FROM jsonb_array_elements(d.truth_snapshot) s LEFT JOIN resume_truth_claims c ON c.id=s->>'id'
       WHERE c.id IS NULL OR c.review_status<>'reviewed' OR c.claim IS DISTINCT FROM s->>'claim'
@@ -26,6 +26,7 @@ export async function readSubmissionDraft(owner: string, itemId: string, sql: Sq
     outreach: draft.outreach,
     claimIds: draft.claimIds,
     truthSnapshot: draft.truthSnapshot,
+    ...(draft.materialManifestId ? { materialBinding: await sql`SELECT id,input_hash,artifacts FROM job_material_manifests WHERE id=${draft.materialManifestId}` } : {}),
   };
   return {
     draftVersion: draft.draftVersion as string,

@@ -18,6 +18,9 @@ import { draftingModel, readSettings, readTimeZone, saveSettings } from '../../l
 import { openaiProvider } from '../../lib/drafting-openai';
 import { anthropicProvider } from '../../lib/drafting-anthropic';
 import { apiKeyFor, apiKeyStatus, saveApiKey } from './secrets';
+import * as workflow from '../../lib/job-workflow';
+import { runCollection, collectionStatus } from '../../lib/job-collection';
+import { buildMaterials, reviewMaterials } from './materials';
 
 export const LOCAL_OWNER = 'local-user';
 
@@ -44,6 +47,8 @@ export async function initializeService(store: JobdeskStore) {
       UPDATE job_application_batch_items i SET status='blocked',lease_worker=NULL,lease_expires_at=NULL,note='Submission uncertain after restart.'
         FROM interrupted WHERE i.id=interrupted.item_id AND i.status<>'submitted'`;
     await sql`UPDATE job_search_runs SET status='failed',error_message='Jobdesk restarted during scan; retry manually.',completed_at=now() WHERE status='running'`;
+    await sql`UPDATE job_collection_runs SET state='partial',errors=errors || '["Owner restarted; resume saved pending targets."]'::jsonb,updated_at=now() WHERE state='running'`;
+    await sql`UPDATE job_material_manifests SET state='needs_attention',error='Owner restarted during rendering; one targeted repair is available.' WHERE state='pending'`;
     await sql`WITH interrupted AS (UPDATE jobdesk_model_runs SET state='interrupted' WHERE state='pending' RETURNING usage_month)
       UPDATE job_ai_usage SET estimated_usd=budget_usd,unknown_cost_requests=unknown_cost_requests+1
       WHERE usage_month IN (SELECT usage_month FROM interrupted)`;
@@ -62,6 +67,35 @@ export function createService(store: JobdeskStore) {
     return drafting.provider === 'openai' ? openaiProvider(key, model) : anthropicProvider(key, model);
   };
   const operations = {
+    'collection.run': operation(schemas['collection.run'], () => { throw new Error('Collection must run outside the store queue.'); }),
+    'workflow.build': operation(schemas['workflow.build'], () => { throw new Error('Rendering must run outside the store queue.'); }),
+    'collection.status': operation(schemas['collection.status'], (_, sql) => collectionStatus(sql)),
+    'workflow.settings': operation(schemas['workflow.settings'], (_, sql) => workflow.workflowSettings(sql)),
+    'workflow.configure': operation(schemas['workflow.configure'], async ([settings], sql) => {
+      const saved = await workflow.saveWorkflowSettings(settings, sql);
+      const leads = await sql`SELECT id FROM job_leads`;
+      for (const lead of leads) { await workflow.refreshWorkflow(lead.id, sql); await workflow.applyExplicitFilters(lead.id, sql); }
+      return saved;
+    }),
+    'workflow.packet': operation(schemas['workflow.packet'], ([input], sql) => workflow.getWorkPacket(input.leadId, input.stage, sql, input.revision)),
+    'workflow.save': operation(schemas['workflow.save'], ([input], sql) => workflow.saveWorkResult(input.packetId, input.inputHash, input.result, sql)),
+    'workflow.claims': operation(schemas['workflow.claims'], ([input], sql) => workflow.lookupClaims(input, sql)),
+    'workflow.sources': operation(schemas['workflow.sources'], async ([ids], sql) => {
+      const claims = await truths.listResumeTruth(sql);
+      return { claims: ids.map((id) => { const claim = claims.find((c) => c.id === id && c.reviewStatus === 'reviewed');
+        if (!claim) throw new JobdeskError('WORKFLOW_REJECTED', 'Claim missing or not reviewed.');
+        return { id, sourceNote: claim.sourceNote, version: claim.version }; }) };
+    }),
+    'workflow.posting': operation(schemas['workflow.posting'], ([input], sql) => workflow.readPosting(input.leadId, input.offset, input.postingHash, sql)),
+    'workflow.savePosting': operation(schemas['workflow.savePosting'], async ([input], sql) => {
+      await drafting.saveOriginalPosting(input.leadId, input.text, input.sourceNote, sql, 'assistant');
+      return { saved: true, verifiedBy: 'assistant', userVerificationClaimed: false };
+    }),
+    'workflow.status': operation(schemas['workflow.status'], ([input], sql) => workflow.workflowStatus(input.leadId, sql)),
+    'workflow.jobs': operation(schemas['workflow.jobs'], ([input], sql) => workflow.listWorkflowJobs(input, sql)),
+    'workflow.review': operation(schemas['workflow.review'], ([input], sql) => reviewMaterials(input, sql, store.root)),
+    'exclusions.list': operation(schemas['exclusions.list'], (args, sql) => workflow.listExclusions(sql, args[0]?.offset ?? 0)),
+    'exclusions.restore': operation(schemas['exclusions.restore'], ([id], sql) => workflow.restoreExclusion(id, sql)),
     health: operation(schemas.health, async (_, sql) => ({
       ok: true,
       runtime: 'PGlite 0.5.8',
@@ -108,7 +142,7 @@ export function createService(store: JobdeskStore) {
       lead: await drafting.getDraftingLead(id, sql),
       history: await drafting.listDraftingHistory(id, sql),
       approval: (
-        await sql`SELECT review_status AS "reviewStatus",updated_at::text AS version FROM job_application_drafts WHERE lead_id=${id}`
+        await sql`SELECT review_status AS "reviewStatus",updated_at::text AS version,material_manifest_id AS "materialManifestId" FROM job_application_drafts WHERE lead_id=${id}`
       )[0],
       usage: await drafting.currentAiUsage(sql),
     })),
@@ -116,6 +150,8 @@ export function createService(store: JobdeskStore) {
       drafting.saveOriginalPosting(id, text, note, sql),
     ),
     'draft.assess': operation(schemas['draft.assess'], async ([id], sql) => {
+      const [bound] = await sql`SELECT material_manifest_id FROM job_application_drafts WHERE lead_id=${id}`;
+      if (bound?.material_manifest_id) throw new JobdeskError('WORKFLOW_REJECTED', 'Use a current selection packet to revise these prepared materials.');
       const runId = randomUUID();
       await sql`UPDATE job_application_drafts SET review_status='review_required' WHERE lead_id=${id}`;
       await sql`UPDATE jobdesk_artifacts SET approval_state='superseded' WHERE lead_id=${id}`;
@@ -133,6 +169,8 @@ export function createService(store: JobdeskStore) {
     }),
     'draft.saveManual': operation(schemas['draft.saveManual'], ([input], sql) => saveManualDraft(input, sql)),
     'draft.approve': operation(schemas['draft.approve'], async ([id, version], sql) => {
+      const [current] = await sql`SELECT lead_id,material_manifest_id FROM job_application_drafts WHERE lead_id=${id}`;
+      if (current) await workflow.assertCurrentMaterial(current, sql, store.root);
       const rows = await sql`UPDATE job_application_drafts d SET review_status='approved'
         WHERE lead_id=${id} AND updated_at::text=${version} AND jsonb_array_length(d.truth_snapshot)>0 AND NOT EXISTS (
           SELECT 1 FROM jsonb_array_elements(d.truth_snapshot) s LEFT JOIN resume_truth_claims c ON c.id=s->>'id'
@@ -140,6 +178,8 @@ export function createService(store: JobdeskStore) {
             OR c.updated_at::text IS DISTINCT FROM s->>'version'
         ) RETURNING id`;
       if (!rows[0]) throw new Error('Draft changed or its truth snapshot needs renewed review.');
+      if (current?.material_manifest_id) await sql`UPDATE jobdesk_artifacts SET approval_state='approved' WHERE id IN
+        (SELECT (x->>'id')::uuid FROM job_material_manifests m,jsonb_array_elements(m.artifacts) x WHERE m.id=${current.material_manifest_id})`;
       return { approved: true };
     }),
     'draft.pdf': operation(schemas['draft.pdf'], ([id], sql) =>
@@ -198,6 +238,8 @@ export function createService(store: JobdeskStore) {
       return rows[0];
     }),
     'submission.begin': operation(schemas['submission.begin'], async ([input], sql) => {
+      const [material] = await sql`SELECT d.lead_id,d.material_manifest_id FROM job_application_drafts d JOIN job_application_batch_items i ON i.lead_id=d.lead_id WHERE i.id=${input.itemId}`;
+      if (material) await workflow.assertCurrentMaterial(material, sql, store.root);
       const draft = await readSubmissionDraft(LOCAL_OWNER, input.itemId, sql);
       if (!draft || draft.draftReviewStatus !== 'approved' || !draft.snapshotCurrent ||
         draft.draftVersion !== input.draftVersion || draft.draftHash !== input.draftHash)
@@ -253,6 +295,14 @@ export function createService(store: JobdeskStore) {
   };
   return async (message: unknown) => {
     const { method, args } = rpcSchema.parse(message);
+    if (method === 'collection.run') return runCollection(schemas['collection.run'].parse(args)[0], store);
+    if (method === 'workflow.build') { const [input] = schemas['workflow.build'].parse(args); return buildMaterials(input.leadId, store, input.repair); }
+    if (method === 'search.run') {
+      schemas['search.run'].parse(args);
+      // Legacy callers retain daily-run semantics; each DB statement is queued,
+      // while the external feed fetch leaves the owner available.
+      return discovery.runDailySearch({ sql: (strings, ...values) => store.run((sql) => sql(strings, ...values)) });
+    }
     if (method === 'backup') {
       schemas.backup.parse(args);
       return store.backup();
@@ -261,7 +311,7 @@ export function createService(store: JobdeskStore) {
       throw new Error('This operation requires the owner process connection.');
     const handler = operations[method];
     return store.run((sql) =>
-      ['truth.addProject', 'truth.importResume', 'truth.importText', 'search.save', 'submission.record', 'draft.edit', 'draft.saveManual', 'draft.approve', 'submission.begin', 'submission.notSubmitted'].includes(method)
+      ['truth.addProject', 'truth.importResume', 'truth.importText', 'search.save', 'submission.record', 'draft.edit', 'draft.saveManual', 'draft.approve', 'submission.begin', 'submission.notSubmitted', 'workflow.packet', 'workflow.save', 'workflow.configure', 'exclusions.restore', 'workflow.review'].includes(method)
         ? store.db.transaction((tx) => handler(args, parameterizedSql(tx)))
         : handler(args, sql),
     );

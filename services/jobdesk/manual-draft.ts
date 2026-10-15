@@ -14,6 +14,8 @@ export const manualDraftSchema = z.object({
  */
 export async function saveManualDraft(raw: z.infer<typeof manualDraftSchema>, sql: Sql) {
   const input = manualDraftSchema.parse(raw);
+  const [bound] = await sql`SELECT material_manifest_id FROM job_application_drafts WHERE lead_id=${input.leadId}`;
+  if (bound?.material_manifest_id) throw new Error('Revise the saved claim selection and rebuild these materials.');
   const [lead] = await sql`SELECT verification_status,posting_text,posting_source_note,application_stage,decision
     FROM job_leads WHERE id=${input.leadId} FOR UPDATE`;
   if (!lead || lead.verification_status !== 'verified' || String(lead.posting_text ?? '').trim().length < 200

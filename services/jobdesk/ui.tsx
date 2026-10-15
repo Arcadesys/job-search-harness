@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import TruthEditor from './ui/truth-editor';
 import JobsShell from './ui/jobs-shell';
+import { WorkflowOverview, WorkflowMaterials } from './ui/workflow';
 import type { ReviewClaim } from '../../lib/resume-truth-review';
 import type { SqlRow } from '../../lib/job-storage';
 import type { Method } from './contract';
@@ -151,9 +152,9 @@ function Cockpit({ data }: { data: any }) {
     [result, setResult] = useState('');
   const segments = location.pathname.split('/').filter(Boolean);
   const active = (
-    ['leads', 'truths', 'review', 'settings'].includes(segments[1]) ? segments[1] : 'today'
-  ) as 'leads' | 'truths' | 'review' | 'settings' | 'today';
-  const detail = segments[1] && !['leads', 'truths', 'review', 'settings'].includes(segments[1]);
+    ['leads', 'truths', 'review', 'settings', 'workflow', 'excluded'].includes(segments[1]) ? segments[1] : 'today'
+  ) as 'leads' | 'truths' | 'review' | 'settings' | 'today' | 'workflow' | 'excluded';
+  const detail = segments[1] && !['leads', 'truths', 'review', 'settings', 'workflow', 'excluded'].includes(segments[1]);
   async function run(method: Method, args: unknown[] = [], reload = true) {
     setBusy(true);
     setError('');
@@ -183,7 +184,7 @@ function Cockpit({ data }: { data: any }) {
           {result}
         </pre>
       )}
-      {active === 'truths' ? (
+      {active === 'workflow' || active === 'excluded' ? <WorkflowOverview data={data} busy={busy} run={run} excluded={active === 'excluded'} /> : active === 'truths' ? (
         (data as ReviewClaim[]).length ? (
           <>
             <TruthEditor claims={data as ReviewClaim[]} />
@@ -201,6 +202,7 @@ function Cockpit({ data }: { data: any }) {
           <p>
             <a href="/jobs/leads">Back to leads</a>
           </p>
+          <WorkflowMaterials leadId={segments[1]} data={data.workflow} run={run} busy={busy} />
           <form
             className="jobsPanel"
             onSubmit={form('draft.posting', (f) => [
@@ -233,7 +235,7 @@ function Cockpit({ data }: { data: any }) {
             </label>
             <button disabled={busy}>Save verified posting</button>
           </form>
-          <section className="jobsPanel">
+          {!data.approval?.materialManifestId && <section className="jobsPanel">
             <h2>Assessment</h2>
             <button disabled={busy} onClick={() => void run('draft.assess', [segments[1]], false)}>
               Assess and prepare draft
@@ -243,11 +245,14 @@ function Cockpit({ data }: { data: any }) {
               Monthly estimate: ${String(data.usage?.estimatedUsd ?? 0)} of $
               {String(data.usage?.budgetUsd ?? 8.5)}.
             </p>
-          </section>
+          </section>}
           {data.history?.draft && (
             <section className="jobsPanel">
               <h2>Saved draft · {data.approval?.reviewStatus}</h2>
-              <form
+              {data.approval?.materialManifestId ? <>
+                <p>These materials use exact approved claims. Ask your assistant to change the selection or ordering. To change a claim’s wording, review it in Résumé truths first.</p>
+                <details><summary>Read the assembled résumé</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{data.history.draft.resumeVariant}</pre></details>
+              </> : <form
                 onSubmit={form('draft.edit', (f) => [
                   segments[1],
                   value(f, 'resume'),
@@ -273,14 +278,14 @@ function Cockpit({ data }: { data: any }) {
                   />
                 </label>
                 <button disabled={busy}>Save edits for review</button>
-              </form>
+              </form>}
               <button
                 disabled={busy}
                 onClick={() => void run('draft.approve', [segments[1], data.approval.version])}
               >
                 Approve this saved draft
               </button>
-              <button
+              {!data.approval?.materialManifestId && <button
                 disabled={busy}
                 onClick={() =>
                   void rpc('draft.pdf', [segments[1]])
@@ -291,7 +296,7 @@ function Cockpit({ data }: { data: any }) {
                 }
               >
                 Download review packet
-              </button>
+              </button>}
               <h3>Saved truth snapshot</h3>
               <ul>
                 {data.history.draft.truthSnapshot.map((claim: SqlRow) => (
@@ -687,7 +692,23 @@ async function main() {
     else if (section === 'leads') data = await rpc('leads.list');
     else if (section === 'settings') data = { search: await rpc('search.settings'), settings: await rpc('settings.read') };
     else if (section === 'review') data = await rpc('review.read');
-    else if (section) data = await rpc('draft.read', [section]);
+    else if (section === 'workflow' || section === 'excluded') {
+      const offset = Math.max(0, Math.min(100000, Number(new URLSearchParams(location.search).get('offset')) || 0));
+      const [runs, exclusionPage, workflow, jobs] = await Promise.all([rpc('collection.status'), rpc('exclusions.list', [{ offset }]), rpc('workflow.status', [{}]), rpc('workflow.jobs', [{}])]);
+      data = { runs, exclusions: exclusionPage.exclusions, exclusionPage, workflow, jobs };
+    }
+    else if (section) {
+      data = await rpc('draft.read', [section]);
+      data.workflow = await rpc('workflow.status', [{ leadId: section }]);
+      if (data.lead && (!data.lead.postingText || data.lead.verificationStatus === 'stale')) {
+        let posting = '', offset: number | null = 0, postingHash: string | undefined;
+        while (offset !== null) {
+          const part = await rpc('workflow.posting', [{ leadId: section, offset, postingHash }]);
+          posting += part.text; postingHash = part.postingHash; offset = part.nextOffset;
+        }
+        data.lead.postingText = posting;
+      }
+    }
     else {
       const [batches, claims, search] = await Promise.all([rpc('batches.list'), rpc('truth.list'), rpc('search.settings')]);
       data = {

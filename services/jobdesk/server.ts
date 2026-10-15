@@ -230,7 +230,7 @@ export async function startJobdesk({
             return;
           }
           const rows = await store.run(
-            (sql) => sql`SELECT relative_path FROM jobdesk_artifacts WHERE id=${id}`,
+            (sql) => sql`SELECT relative_path,kind FROM jobdesk_artifacts WHERE id=${id}`,
           );
           if (!rows[0]) {
             json(res, 404, { error: 'Artifact not found.' });
@@ -239,7 +239,7 @@ export async function startJobdesk({
           res.writeHead(200, {
             ...PRIVATE_HEADERS,
             'Content-Type': 'application/pdf',
-            'Content-Disposition': 'attachment; filename="application-review-packet.pdf"',
+            'Content-Disposition': `attachment; filename="${rows[0].kind === 'resume' ? 'resume' : rows[0].kind === 'outreach' ? 'outreach' : 'application-review-packet'}.pdf"`,
           });
           res.end(await readFile(path.join(store.root, rows[0].relative_path)));
           return;

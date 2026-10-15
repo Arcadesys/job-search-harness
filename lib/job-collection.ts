@@ -131,12 +131,17 @@ export async function runCollection(raw: CollectionRequest, store: JobdeskStore,
       if (!prior || prior.source !== input.source) throw new JobdeskError('WORKFLOW_REJECTED', 'Collection run not found for this source.');
       if (prior.state === 'running') throw new JobdeskError('WORKFLOW_REJECTED', 'This collection is already running.');
       if (!prior.pending.length) return { ...prior, reused: true };
+      if (input.source === 'feeds') {
+        const queries = await sql`SELECT id,feed_url FROM job_search_queries WHERE enabled=true`;
+        prior.pending = prior.pending.map((target: Target) => ({ ...target,
+          url: queries.find((query) => `google-alerts:${query.id}` === target.source)?.feed_url ?? '' }));
+      }
       await sql`UPDATE job_collection_runs SET state='running',errors='[]',updated_at=clock_timestamp() WHERE id=${prior.id}`;
       return { ...prior, errors: [], counts: { ...prior.counts, failed: 0 }, reused: false };
     }
     const pending: Target[] = input.source === 'builtin'
       ? (input.urls.length ? input.urls.map((url) => ({ kind: 'job', source: 'builtin', url: builtinJobUrl(url) })) : [{ kind: 'listing', source: 'builtin', url: `${BUILTIN}/jobs` }])
-      : (await sql`SELECT id,feed_url FROM job_search_queries WHERE enabled=true`).map((query) => ({ kind: 'feed', source: `google-alerts:${query.id}`, url: validateGoogleAlertsFeedUrl(query.feed_url) }));
+      : (await sql`SELECT id,feed_url FROM job_search_queries WHERE enabled=true`).map((query) => ({ kind: 'feed', source: `google-alerts:${query.id}`, url: String(query.feed_url ?? '') }));
     if (!pending.length) throw new JobdeskError('WORKFLOW_REJECTED', 'Add an enabled source before collecting.');
     const id = randomUUID();
     const coverage = input.source === 'builtin' ? (input.urls.length ? 'Supplied Built In Chicago job URLs only; no full-site coverage.' : 'Built In Chicago first page only, at most 25 details; no full-site coverage.') : 'Entries currently returned by the enabled Google Alert feeds; no full-site coverage.';
@@ -155,6 +160,8 @@ export async function runCollection(raw: CollectionRequest, store: JobdeskStore,
     visited.add(target.url); counts.requested++;
     try {
       if (target.kind === 'feed') await store.run(async (sql) => {
+        if (!target.url) throw new Error('Feed URL is missing or the source is disabled. Update Settings before resuming.');
+        validateGoogleAlertsFeedUrl(target.url);
         const rows = await sql`INSERT INTO job_search_usage(usage_month,calls_used,call_cap) VALUES(date_trunc('month',now())::date,1,300)
           ON CONFLICT(usage_month) DO UPDATE SET calls_used=job_search_usage.calls_used+1 WHERE job_search_usage.calls_used<job_search_usage.call_cap RETURNING calls_used`;
         if (!rows.length) throw new Error('Monthly feed poll cap reached.');
@@ -179,7 +186,7 @@ export async function runCollection(raw: CollectionRequest, store: JobdeskStore,
       }
     } catch (error) {
       failed.push(target); counts.failed++;
-      errors.push(`${target.url}: ${error instanceof Error ? error.message : 'Collection failed.'}`);
+      errors.push(`${target.source} ${target.url}: ${error instanceof Error ? error.message : 'Collection failed.'}`);
     }
     await store.run((sql) => sql`UPDATE job_collection_runs SET pending=${JSON.stringify([...pending, ...failed])}::jsonb,
       counts=${JSON.stringify(counts)}::jsonb,errors=${JSON.stringify(errors)}::jsonb,updated_at=clock_timestamp() WHERE id=${run.id}`);

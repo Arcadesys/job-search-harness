@@ -54,7 +54,7 @@ export function parseGoogleAlertsFeed(xml: string): SearchResult[] {
   if (xml.length > 2_000_000) throw new Error('Google Alert feed is too large.');
   if (/<!DOCTYPE|<!ENTITY/i.test(xml) || XMLValidator.validate(xml) !== true) throw new Error('Google Alert returned invalid XML.');
   const document = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', removeNSPrefix: true, processEntities: true }).parse(xml);
-  if (!Object.hasOwn(document ?? {}, 'feed') && !document?.rss?.channel) throw new Error('Google Alert did not return a feed.');
+  if (!Object.hasOwn(document ?? {}, 'feed') && !Object.hasOwn(document?.rss ?? {}, 'channel')) throw new Error('Google Alert did not return a feed.');
   const entries = document?.feed?.entry ?? document?.rss?.channel?.item ?? [];
   const items = Array.isArray(entries) ? entries : [entries];
   return items.slice(0, 50).map((entry: Record<string, unknown>) => {

@@ -280,3 +280,21 @@ test('explicit material revisions preserve intent and returning to a saved selec
     assert.equal((await store.sql`SELECT sum(attempts)::int AS n FROM job_material_manifests`)[0].n, 2, 'restoring a cached result performs no extra render');
   } finally { await store.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+test('an unconfigured feed does not block valid feeds or consume a poll; fixing its URL resumes only that source', async () => {
+  const { root, store, call } = await setup();
+  try {
+    const searches = [{ id: 'one', lane: 'One', location: '', query: 'synthetic first search', enabled: true, feedUrl: 'https://www.google.com/alerts/feeds/1/2' },
+      { id: 'two', lane: 'Two', location: '', query: 'synthetic second search', enabled: true, feedUrl: '' }];
+    await call({ method: 'search.save', args: [searches] });
+    let fetched = 0;
+    const fetcher: typeof fetch = async () => { fetched++; return new Response(`<feed><entry><title>Source ${fetched}</title><link href="https://example.test/feed-job-${fetched}"/></entry></feed>`); };
+    const first: any = await runCollection({ source: 'feeds', urls: [] }, store, { delayMs: 0, fetcher });
+    assert.equal(first.state, 'partial'); assert.equal(first.counts.saved, 1); assert.equal(first.counts.failed, 1); assert.equal(fetched, 1);
+    assert.equal((await store.sql`SELECT calls_used FROM job_search_usage`)[0].calls_used, 1);
+    searches[1].feedUrl = 'https://www.google.com/alerts/feeds/3/4';
+    await call({ method: 'search.save', args: [searches] });
+    const resumed: any = await runCollection({ source: 'feeds', urls: [], runId: first.id }, store, { delayMs: 0, fetcher });
+    assert.equal(resumed.state, 'complete'); assert.equal(resumed.counts.saved, 2); assert.equal(resumed.counts.failed, 0); assert.equal(fetched, 2);
+  } finally { await store.close(); await rm(root, { recursive: true, force: true }); }
+});

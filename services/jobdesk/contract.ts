@@ -144,6 +144,10 @@ export const methodSchemas = {
   'settings.read': z.tuple([]),
   'settings.save': z.tuple([settingsSchema]),
   'settings.saveApiKey': z.tuple([z.enum(['openai', 'anthropic']), z.string().max(500)]),
+  'cockpit.live': z.tuple([]),
+  'cockpit.pipeline': z.tuple([]),
+  'cockpit.lead': z.tuple([id]),
+  'cockpit.reconcile': z.tuple([]),
 } as const;
 export type Method = keyof typeof methodSchemas;
 export type Args<M extends Method> = z.infer<(typeof methodSchemas)[M]>;

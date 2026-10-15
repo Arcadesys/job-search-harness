@@ -50,10 +50,10 @@ test('collection health, recoverable exclusions, rendered review, keyboard and r
     await page.getByRole('link', { name: 'Program Manager', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Prepared materials' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Employer résumé' })).toBeVisible();
-    await expect(page.getByText(/Rendered review: Pending/)).toBeVisible();
+    await expect(page.locator('.ck-checks div', { hasText: 'Rendered review' })).toContainText('Pending');
     await page.getByRole('checkbox', { name: /I opened every exported page/ }).check();
     await page.getByRole('button', { name: 'Record rendered review' }).click();
-    await expect(page.getByText(/Rendered review: Passed/)).toBeVisible();
+    await expect(page.locator('.ck-checks div', { hasText: 'Rendered review' })).toContainText('Passed');
     if (info.project.name === 'desktop') {
       await page.evaluate(() => { document.documentElement.style.fontSize = '32px'; });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);

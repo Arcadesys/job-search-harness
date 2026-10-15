@@ -131,12 +131,12 @@ test('local session, truthful approval, cancel/retry, lead review and large-text
     await expect(
       page.getByRole('link', { name: 'Local browser fixture', exact: true }),
     ).toBeVisible();
-    await page.getByRole('combobox', { name: 'Decision', exact: true }).selectOption('keep');
-    await page.getByRole('button', { name: 'Save lead review', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Decision for Local browser fixture' }).selectOption('keep');
     await page
       .getByRole('checkbox', { name: 'Local browser fixture · Fixture organization' })
       .check();
-    await page.getByRole('button', { name: 'Queue selected leads' }).click();
+    await page.getByRole('button', { name: 'Queue as a pursued batch' }).click();
+    await expect(page).toHaveURL(`${runtime.origin}/jobs`);
     await page.getByRole('link', { name: 'Today', exact: true }).click();
     await expect(page.getByText('Fixture organization · queued')).toBeVisible();
   } finally {

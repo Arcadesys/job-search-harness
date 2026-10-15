@@ -55,6 +55,7 @@ for (const seed of seeds) {
     const work = new Map<string, SavedWork>();
     const byId = new Map<string, SavedWork>();
     const materials = new Map<string, any>();
+    const evaluations = new Map<string, { artifactId: string; artifactHash: string; materialId: string; attempts: number }>();
     const restored = new Set<string>();
     const corrupted = new Set<string>();
     const note = 'User note must survive every machine action.';
@@ -133,6 +134,25 @@ for (const seed of seeds) {
       const [lead] = await store.sql`SELECT decision,notes FROM job_leads WHERE id=${leadId}`;
       assert.equal(lead.decision, decision); assert.equal(lead.notes, note);
       for (const row of await store.sql`SELECT * FROM job_work_stages WHERE lead_id=${leadId}`) {
+        if (row.stage === 'resume_evaluation') {
+          const expected = evaluations.get(row.id);
+          assert.ok(expected, 'no evaluation without an explicit evaluation.run request');
+          assert.equal(row.attempts, expected.attempts);
+          assert.ok(row.attempts >= 1 && row.attempts <= 2, 'evaluation permits at most one explicit retry');
+          assert.ok(row.result?.report, 'requested completed evaluation retains its saved report even when stale');
+          assert.equal(row.result.report.approvalGranted, false, 'mechanical checks never grant approval');
+          const binding = row.result.report.binding;
+          assert.equal(binding.materialId, expected.materialId);
+          assert.equal(binding.artifactId, expected.artifactId);
+          assert.equal(binding.artifactHash, expected.artifactHash);
+          const generated = [...materials.values()].find((material) => material.id === binding.materialId);
+          assert.ok(generated, 'evaluation must bind to known generated materials');
+          assert.ok(generated.artifacts.some((artifact: any) => artifact.kind === 'resume'
+            && artifact.id === binding.artifactId && artifact.contentHash === binding.artifactHash),
+          'evaluation must bind to the exact known generated resume artifact');
+          continue;
+        }
+        assert.ok(row.stage === 'assessment' || row.stage === 'selection', `unexpected work stage: ${row.stage}`);
         const expected = byId.get(row.id)!;
         assert.ok(expected, 'no spontaneous model work');
         assert.equal(row.attempts, expected.attempts);
@@ -203,7 +223,24 @@ for (const seed of seeds) {
         assert.equal(repeat.reused, true); assert.deepEqual(repeat.artifacts, built.artifacts);
         await rpc('workflow.review', { id: built.id, inputHash: built.inputHash, passed: true, note: 'Synthetic state-machine assertion; rendered QA is separate.' });
         const [draft] = await store.sql`SELECT updated_at::text AS version FROM job_application_drafts WHERE lead_id=${leadId}`;
-        await rpc('evaluation.run', { leadId });
+        const evaluated = await rpc('evaluation.run', { leadId });
+        const evaluationId = evaluated.reused ? evaluated.stage.id : evaluated.id;
+        const resume = built.artifacts.find((artifact: any) => artifact.kind === 'resume');
+        assert.ok(resume, 'evaluation request has a known generated resume');
+        const known = evaluations.get(evaluationId);
+        if (evaluated.reused) {
+          assert.ok(known, 'reused evaluations must originate in an earlier explicit request');
+          assert.equal(evaluated.stage.passed, true);
+        } else {
+          assert.equal(evaluated.report.passed, true);
+          assert.equal(evaluated.report.approvalGranted, false);
+          evaluations.set(evaluationId, { artifactId: resume.id, artifactHash: resume.contentHash,
+            materialId: built.id, attempts: (known?.attempts ?? 0) + 1 });
+        }
+        const expectedEvaluation = evaluations.get(evaluationId)!;
+        assert.equal(expectedEvaluation.materialId, built.id);
+        assert.equal(expectedEvaluation.artifactId, resume.id);
+        assert.equal(expectedEvaluation.artifactHash, resume.contentHash);
         await rpc('draft.approve', leadId, draft.version);
       },
       corrupt: async () => {
@@ -235,7 +272,7 @@ for (const seed of seeds) {
         await actions[action](); await invariants();
       }
     } catch (error) {
-      throw new Error(`Workflow fuzz seed=${seed} step=${trace.length}; replay JOBDESK_FUZZ_SEED=${seed} JOBDESK_FUZZ_STEPS=${trace.length} npm run test:jobdesk:fuzz\nTrace: ${trace.join(' -> ')}`, { cause: error });
+      throw new Error(`Workflow fuzz seed=${seed} step=${trace.length}; replay JOBDESK_FUZZ_SEED=${seed} JOBDESK_FUZZ_STEPS=${trace.length} npm run test:jobdesk:fuzz\nTrace: ${trace.join(' -> ')}\nCause: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     } finally { await store.close(); for (const directory of roots) await rm(directory, { recursive: true, force: true }); }
   });
 

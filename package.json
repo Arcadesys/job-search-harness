@@ -16,7 +16,11 @@
     "test:jobdesk:browser": "playwright test --config=playwright.jobdesk.config.ts",
     "typecheck": "tsc --noEmit",
     "eval:resumes": "node --import tsx scripts/evaluate-resumes.ts",
-    "test:resume-evals": "node --import tsx --test lib/resume-evaluation.test.ts services/jobdesk/resume-evaluation.test.ts"
+    "test:resume-evals": "node --import tsx --test lib/resume-evaluation.test.ts services/jobdesk/resume-evaluation.test.ts",
+    "desktop:stage": "tsx scripts/build-desktop.mts",
+    "desktop": "npm run desktop:stage && electron dist/app",
+    "desktop:dist": "npm run desktop:stage && electron-builder --config electron-builder.config.cjs --publish never",
+    "test:desktop": "playwright test --config=playwright.desktop.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
@@ -25,6 +29,7 @@
     "cheerio": "^1.2.0",
     "esbuild": "0.28.2",
     "fast-xml-parser": "^5.11.1",
+    "mammoth": "1.13.0",
     "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -38,14 +43,18 @@
     "@types/node": "22.18.0",
     "@types/react": "19.1.11",
     "@types/react-dom": "19.1.7",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
     "eslint": "9.35.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^16.3.0",
+    "jszip": "3.10.1",
     "pdfjs-dist": "4.10.38",
     "typescript": "5.9.2",
     "typescript-eslint": "^8.43.0"
   },
   "engines": {
     "node": ">=22"
-  }
+  },
+  "author": "Job Search Harness contributors"
 }

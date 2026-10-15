@@ -58,7 +58,7 @@ export function Today({ data, live, now, run, busy }: { data: any; live: LiveSta
     </PageHead>
 
     {!setupDone && <section className="ck-card ck-card--strong" aria-labelledby="get-started">
-      <h2 id="get-started">Get started</h2>
+      <div className="ck-card-head"><h2 id="get-started">Get started</h2><a className="ck-btn ck-btn--primary ck-btn--small" href="/jobs/welcome">Open the setup guide</a></div>
       <ol className="ck-stack" style={{ margin: 0, paddingLeft: '1.4rem', gap: '.4rem' }}>
         <li>{data.setup.truths ? '✓ ' : ''}<a href="/jobs/truths">Add your résumé</a></li>
         <li>{data.setup.reviewed ? '✓ ' : ''}<a href="/jobs/truths">Review and approve your claims</a></li>

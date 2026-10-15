@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import { clientEndpoint } from './paths.mjs';
 import { workflowTools } from './workflow-tools.mjs';
@@ -8,9 +9,9 @@ import { workflowTools } from './workflow-tools.mjs';
 export const currentTool = new AsyncLocalStorage();
 
 // Thin IPC consumer: never opens PGlite, accesses Keychain, or falls back online.
-export function localCall(method, args, socketPath) {
-  const tool = currentTool.getStore();
+function sendOnce(method, args, socketPath, tool) {
   return new Promise((resolve, reject) => {
+    let connected = false;
     const req = httpRequest(
       {
         socketPath,
@@ -41,16 +42,52 @@ export function localCall(method, args, socketPath) {
         });
       },
     );
+    req.on('socket', (socket) => socket.once('connect', () => { connected = true; }));
     req.setTimeout(120_000, () => req.destroy());
-    req.on('error', () =>
-      reject(
-        new Error(
-          'Local Jobdesk is unavailable or timed out. Reconcile pending submissions before retrying. No hosted fallback was attempted.',
-        ),
-      ),
-    );
+    req.on('error', (cause) => {
+      const error = new Error(
+        'Local Jobdesk is unavailable or timed out. Reconcile pending submissions before retrying. No hosted fallback was attempted.',
+      );
+      // Nothing reached the owner, so starting it and sending again cannot repeat an action.
+      error.notListening = !connected && ['ENOENT', 'ECONNREFUSED'].includes(cause?.code);
+      reject(error);
+    });
     req.end(JSON.stringify({ method, args, ...(tool ? { tool } : {}) }));
   });
+}
+
+let launching;
+/** The desktop app names itself in JOBDESK_APP; start it quietly the first time it is needed. */
+function launchApp(env = process.env) {
+  if (!env.JOBDESK_APP) return false;
+  launching ??= new Promise((resolve) => {
+    const { ELECTRON_RUN_AS_NODE: _node, ...rest } = env;
+    let extra = [];
+    try { extra = JSON.parse(env.JOBDESK_APP_ARGS || '[]'); } catch { /* ignore a malformed value */ }
+    const child = spawn(env.JOBDESK_APP, [...extra, '--background'], { detached: true, stdio: 'ignore', env: rest });
+    child.on('error', () => resolve(false));
+    child.unref();
+    setTimeout(() => resolve(true), 250);
+  });
+  return launching;
+}
+
+export async function localCall(method, args, socketPath) {
+  const tool = currentTool.getStore();
+  try {
+    return await sendOnce(method, args, socketPath, tool);
+  } catch (error) {
+    if (!error.notListening || !(await launchApp())) throw error;
+  }
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      return await sendOnce(method, args, socketPath, tool);
+    } catch (error) {
+      if (!error.notListening || Date.now() > deadline) throw error;
+    }
+  }
 }
 
 export function createLocalApiClient({

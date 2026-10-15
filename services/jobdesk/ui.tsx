@@ -10,6 +10,7 @@ import { Detail } from './ui/detail';
 import { WeeklyReview } from './ui/review';
 import { Reconcile } from './ui/reconcile';
 import { Settings } from './ui/settings';
+import { Welcome, WELCOMED_KEY } from './ui/welcome';
 import { useLive, useNow, type LiveState } from './ui/live';
 import type { Pipeline, Run } from './ui/common';
 import type { ReviewClaim } from '../../lib/resume-truth-review';
@@ -92,7 +93,7 @@ function ResumeOnboarding({ busy, onPaste }: { busy: boolean; onPaste: (text: st
   );
 }
 
-const SECTIONS = ['leads', 'truths', 'review', 'settings', 'workflow', 'excluded', 'reconcile'] as const;
+const SECTIONS = ['leads', 'truths', 'review', 'settings', 'workflow', 'excluded', 'reconcile', 'welcome'] as const;
 type Section = (typeof SECTIONS)[number];
 const loadLive = () => rpc('cockpit.live') as Promise<LiveState>;
 
@@ -139,6 +140,7 @@ function Cockpit({ data }: { data: any }) {
             : active === 'settings' ? <Settings data={data} run={run} rpc={rpc} busy={busy} setBusy={setBusy} setError={setError} />
               : active === 'review' ? <WeeklyReview data={data} pipeline={data.pipeline} run={run} busy={busy} />
                 : active === 'reconcile' ? <Reconcile data={data} run={run} busy={busy} />
+                  : active === 'welcome' ? <Welcome data={data} rpc={rpc} />
                   : <Today data={data} live={live} now={now} run={run} busy={busy} />}
     </JobsShell>
   );
@@ -175,6 +177,11 @@ async function main() {
       data = { ...review, pipeline, timeZone: settings.timeZone };
     }
     else if (section === 'reconcile') data = await rpc('cockpit.reconcile');
+    else if (section === 'welcome') {
+      const [assistants, settings, search, workflow, claims] = await Promise.all([rpc('assistant.status'), rpc('settings.read'),
+        rpc('search.settings'), rpc('workflow.settings'), rpc('truth.list')]);
+      data = { assistants, settings, search, workflow, truthCount: claims.length };
+    }
     else if (section === 'workflow' || section === 'excluded') {
       const offset = Math.max(0, Math.min(100000, Number(new URLSearchParams(location.search).get('offset')) || 0));
       const [runs, exclusionPage, workflow, jobs, pipeline] = await Promise.all([rpc('collection.status'), rpc('exclusions.list', [{ offset }]),
@@ -198,6 +205,10 @@ async function main() {
     else {
       const [batches, claims, search, pipeline, review, reconcile] = await Promise.all([rpc('batches.list'), rpc('truth.list'), rpc('search.settings'),
         rpc('cockpit.pipeline'), rpc('review.read'), rpc('cockpit.reconcile')]);
+      let welcomed = true;
+      try { welcomed = Boolean(localStorage.getItem(WELCOMED_KEY)); } catch { /* storage is optional */ }
+      // A brand-new workspace opens on the setup guide once.
+      if (!welcomed && !claims.length && !search.queries.length) { location.replace('/jobs/welcome'); return; }
       data = {
         setup: {
           truths: claims.length,

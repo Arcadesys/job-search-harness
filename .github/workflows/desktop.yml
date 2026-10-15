@@ -1,0 +1,71 @@
+name: Desktop app
+
+# Pull requests build every installer and run the first-run test against the packaged app,
+# so the .dmg, .exe and Linux files can be downloaded from the run before a release.
+# A pushed tag such as v0.2.0 also publishes them to a draft GitHub release.
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            app: release/mac-arm64/Job Search Harness.app/Contents/MacOS/Job Search Harness
+          - os: windows-latest
+            app: release/win-unpacked/Job Search Harness.exe
+          - os: ubuntu-latest
+            app: release/linux-unpacked/job-search-harness
+    runs-on: ${{ matrix.os }}
+    env:
+      # Signing turns on only when these secrets exist (see docs/desktop-release.md).
+      CSC_LINK: ${{ matrix.os == 'macos-latest' && secrets.MAC_CERTIFICATE_P12_BASE64 || secrets.WINDOWS_CERTIFICATE_P12_BASE64 }}
+      CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.MAC_CERTIFICATE_PASSWORD || secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Unsigned build
+        if: env.CSC_LINK == ''
+        shell: bash
+        run: echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+      - name: Build installers
+        shell: bash
+        run: |
+          npm run desktop:stage
+          npx electron-builder --config electron-builder.config.cjs --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+      - name: First-run test on the packaged app
+        shell: bash
+        env:
+          JOBDESK_DESKTOP_EXECUTABLE: ${{ github.workspace }}/${{ matrix.app }}
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a npm run test:desktop; else npm run test:desktop; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            release/*.dmg
+            release/*.exe
+            release/*.AppImage
+            release/*.deb

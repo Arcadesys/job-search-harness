@@ -99,6 +99,11 @@ export function Settings({ data, run, rpc, busy, setBusy, setError }: { data: an
           <button className="ck-btn" style={{ alignSelf: 'flex-start' }} disabled={busy}>Save drafting settings</button>
         </form>
         <div className="ck-card">
+          <h2>Your AI assistant</h2>
+          <span className="ck-muted" style={{ fontSize: '1rem' }}>Connect Claude Desktop or the ChatGPT desktop app, change your preferences or add your résumé with the setup guide.</span>
+          <a className="ck-btn" style={{ alignSelf: 'flex-start' }} href="/jobs/welcome">Open the setup guide</a>
+        </div>
+        <div className="ck-card">
           <div className="ck-card-head"><h2>Local backup</h2>
             <button className="ck-btn" disabled={busy} onClick={() => void run('backup', [], false)}>Back up now</button></div>
           <span className="ck-muted" style={{ fontSize: '1rem' }}>Backups stay in the private local data directory.</span>

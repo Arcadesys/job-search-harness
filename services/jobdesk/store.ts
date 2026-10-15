@@ -15,7 +15,7 @@ import {
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { parameterizedSql, type Sql } from '../../lib/job-storage';
-import { migrate, MIGRATIONS } from './migrate';
+import { migrate, migrationsDirectory } from './migrate';
 import { defaultDataRoot } from './paths.mjs';
 
 export const PGLITE_VERSION = '0.5.8';
@@ -83,7 +83,7 @@ export class JobdeskStore {
     this.sql = parameterizedSql(db);
   }
 
-  static async open(directory = DEFAULT_ROOT, migrations = MIGRATIONS, restore?: Blob,
+  static async open(directory = DEFAULT_ROOT, migrations = migrationsDirectory(), restore?: Blob,
     stageRestoredArtifacts?: (root: string) => Promise<void>) {
     const root = await privateRoot(directory);
     const lockValue = JSON.stringify({ pid: process.pid, nonce: randomUUID() });

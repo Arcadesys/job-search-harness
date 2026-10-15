@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityFeed, ago, type LiveState } from './live';
 
-export type View = 'today' | 'leads' | 'truths' | 'review' | 'settings' | 'workflow' | 'excluded' | 'reconcile';
+export type View = 'today' | 'leads' | 'truths' | 'review' | 'settings' | 'workflow' | 'excluded' | 'reconcile' | 'welcome';
 type Count = keyof LiveState['counts'];
 const navigation: { id: View; label: string; href: string; count?: Count; tone?: 'accent' | 'bad' }[] = [
   { id: 'today', label: 'Today', href: '/jobs', count: 'today', tone: 'accent' },
@@ -64,7 +64,7 @@ export default function JobsShell({ active, children, truthReview = false, sessi
     </aside>
     <div className="ck-column">
       <header className="ck-topbar">
-        <div className="ck-crumb"><strong>{current?.label ?? 'Job Search Harness'}</strong>{crumb && <><span aria-hidden="true">/</span><span>{crumb}</span></>}</div>
+        <div className="ck-crumb"><strong>{current?.label ?? (active === 'welcome' ? 'Setup' : 'Job Search Harness')}</strong>{crumb && <><span aria-hidden="true">/</span><span>{crumb}</span></>}</div>
         <div className="ck-top-actions">
           {hasFeed && <span className="ck-pill ck-pill--ok"><span className={`ck-dot ${offline ? 't-bad' : 't-ok'}`} aria-hidden="true" />{offline ? 'Owner unreachable' : 'Owner running'}</span>}
           <span className="ck-pill jobsPrivateBadge">Private · {sessionLabel}</span>

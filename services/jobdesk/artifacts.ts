@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fontDirectory } from '../../lib/resources';
 import { renderApplicationPdf } from '../../lib/job-pdf';
 import type { Sql } from '../../lib/job-storage';
 import { getDraftingLead, listDraftingHistory } from '../../lib/job-drafting';
@@ -14,7 +14,7 @@ export async function createReviewPacket(root: string, leadId: string, sql: Sql)
   const pdf = await renderApplicationPdf(
     lead as Parameters<typeof renderApplicationPdf>[0],
     draft as Parameters<typeof renderApplicationPdf>[1],
-    fileURLToPath(new URL('../../assets/fonts/', import.meta.url)),
+    fontDirectory(),
   );
   const id = randomUUID();
   const relative = `artifacts/${id}.pdf`;

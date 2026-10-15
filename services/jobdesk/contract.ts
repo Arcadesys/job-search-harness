@@ -6,6 +6,7 @@ import { leaseSchema, claimSchema } from './queue';
 import { draftBindingSchema } from './submission-draft';
 import { manualDraftSchema } from './manual-draft';
 import { workflowSettingsSchema, stageSchema } from '../../lib/job-workflow';
+import { briefMessageSchema, briefProposeSchema, briefApproveSchema, briefCancelSchema } from '../../lib/search-brief-store';
 import { collectionRequestSchema } from '../../lib/job-collection';
 
 const id = z.string().regex(/^[a-f0-9]{64}$/);
@@ -13,6 +14,12 @@ const text = z.string().max(1000);
 const lease = leaseSchema;
 export const methodSchemas = {
   health: z.tuple([]),
+  'brief.read': z.tuple([]),
+  'brief.addMessage': z.tuple([briefMessageSchema]),
+  'brief.propose': z.tuple([briefProposeSchema]),
+  'brief.approve': z.tuple([briefApproveSchema]),
+  'brief.cancelDraft': z.tuple([briefCancelSchema]),
+  'preparation.plan': z.tuple([z.object({ leadId: id }).strict()]),
   'collection.run': z.tuple([collectionRequestSchema]),
   'collection.status': z.tuple([]),
   'workflow.settings': z.tuple([]),

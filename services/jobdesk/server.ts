@@ -60,6 +60,8 @@ export async function startJobdesk({
   try {
     await initializeService(store);
     const service = createService(store);
+    // Transport-derived capability, never accepted from RPC/model arguments.
+    const browserService = createService(store, { trustedUserActions: true });
     const sessions = new Map<string, { csrf: string; expires: number }>();
     const tickets = new Map<string, number>();
     const socketPath = brokerEndpoint(store.root);
@@ -220,7 +222,7 @@ export async function startJobdesk({
             json(res, 403, { error: 'This operation requires the local worker connection.' });
             return;
           }
-          json(res, 200, { data: await service(input) });
+          json(res, 200, { data: await browserService(input) });
           return;
         }
         if (req.method === 'GET' && url.pathname.startsWith('/artifacts/')) {

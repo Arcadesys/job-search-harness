@@ -17,8 +17,9 @@ The design is written up at
 
 ## Install
 
-A one-click installer for Claude Desktop is on the way. Until then, setup takes
-a few minutes and needs [Node.js 22 or later](https://nodejs.org/).
+**macOS + Claude Desktop (preview):** download the self-contained Intel or Apple Silicon ZIP from the [macOS installer workflow](https://github.com/Arcadesys/job-search-harness/actions/workflows/macos-installer.yml), unzip it, and double-click **Install Job Search Harness.command**. Confirm the changes, restart Claude Desktop, then double-click **Open Job Search Harness.command** in the installed app folder. No separate Node installation or manual JSON editing is required. See [installation, upgrade and recovery details](docs/macos-installer.md). The preview is unsigned and needs real-Mac validation before a formal release.
+
+**Manual installation (all platforms):** setup needs [Node.js 22 or later](https://nodejs.org/).
 
 1. Download this repository (green **Code** button, then **Download ZIP**) and unzip it
    somewhere permanent, such as your Documents folder.

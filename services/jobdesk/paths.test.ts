@@ -1,9 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { browserCommand, brokerEndpoint, clientEndpoint, defaultDataRoot, legacyRoots } from './paths.mjs';
+import { browserCommand, brokerEndpoint, clientEndpoint, defaultDataRoot, legacyRoots, isMainModule } from './paths.mjs';
 import { inSyncedFolder } from './store';
+import { writeFile, realpath, symlink, rm } from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { tempRoot } from '../../tests/fixtures/temp-root';
 
 const none = () => false;
+
+test('entry guards recognize symlinked install paths without running imported modules', { skip: process.platform === 'win32' }, async () => {
+  const root = await tempRoot('jobdesk-entry-');
+  try {
+    const target = path.join(root, 'target.mjs'), alias = path.join(root, 'alias.mjs');
+    await writeFile(target, '');
+    await symlink(target, alias);
+    const url = pathToFileURL(await realpath(target)).href;
+    assert.equal(isMainModule(url, target), true);
+    assert.equal(isMainModule(url, alias), true);
+    assert.equal(isMainModule(import.meta.url, alias), false);
+    assert.equal(isMainModule(url, ''), false);
+    assert.equal(isMainModule(url, path.join(root, 'missing')), false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test('each platform gets a per-user, unsynced data folder', () => {
   assert.equal(defaultDataRoot({ platform: 'darwin', env: {}, home: '/Users/sam', exists: none }),

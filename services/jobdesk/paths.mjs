@@ -2,10 +2,18 @@ import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Shared by the owner, the CLI and the dependency-free MCP adapter, so it is
 // plain JavaScript. Every location stays per-user and outside synced folders.
 export const APP_NAME = 'Job Search Harness';
+
+/** Node canonicalizes module URLs, but argv can still name a symlinked folder. */
+export function isMainModule(moduleURL, entry = process.argv[1]) {
+  if (!entry) return false;
+  try { return moduleURL === pathToFileURL(realpathSync(entry)).href; }
+  catch { return false; }
+}
 
 /** Folders used by earlier releases. An existing one is reused, never moved. */
 export function legacyRoots({ platform = process.platform, home = homedir() } = {}) {

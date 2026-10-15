@@ -2,13 +2,13 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { chmod, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { handleTruthReview } from '../../lib/resume-truth-http';
 import { JobdeskStore, DEFAULT_ROOT } from './store';
 import { createService, initializeService } from './service';
 import { JobdeskError } from './errors';
-import { brokerEndpoint } from './paths.mjs';
+import { brokerEndpoint, isMainModule } from './paths.mjs';
 
 const windows = process.platform === 'win32';
 
@@ -336,7 +336,7 @@ async function main() {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+if (isMainModule(import.meta.url))
   main().catch((error) => {
     // Local stderr only (the private owner.log when detached); it holds no record contents.
     console.error(

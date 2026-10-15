@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
+import { tempRoot } from '../../tests/fixtures/temp-root';
 import { PGlite } from '@electric-sql/pglite';
 import { parameterizedSql, type Sql } from '../../lib/job-storage';
 import { leadIdForUrl } from '../../lib/job-discovery';
@@ -201,4 +204,48 @@ test('MCP workflow tools expose brief reads and proposals but no user-message, c
   for (const forbidden of ['brief.addMessage', 'brief.cancelDraft', 'brief.approve', 'draft.approve', 'truth.review']) {
     assert.ok(!calls.some(({ method }) => method === forbidden), `MCP must not expose ${forbidden}`);
   }
+});
+
+
+test('current material metadata and historical draft approval cannot hide missing résumé bytes', async () => {
+  const { db, store, sql, call } = await setup();
+  const root = await tempRoot('jobdesk-preparation-');
+  Object.assign(store, { root });
+  try {
+    const leadId = await addVerified(call, 'missing-artifact');
+    await rpc(call, 'leads.update', { id: leadId, decision: 'keep', verification: 'verified' });
+    await assess(call, leadId);
+    const selection = await rpc(call, 'workflow.packet', { leadId, stage: 'selection' });
+    const result: Parameters<typeof makeMaterialManifest>[0] = { template: TEMPLATE_VERSION, sections: [{ kind: 'experience', claimIds: ['experience.1.claim.1'] }], outreach: false, unresolved: [] };
+    assert.equal((await rpc(call, 'workflow.save', { packetId: selection.id, inputHash: selection.inputHash, result })).state, 'complete');
+    const context = await store.run((sql) => workflowContext(leadId, sql));
+    const manifest = makeMaterialManifest(result, context);
+    const inputHash = materialFingerprint(manifest, context);
+    const materialId = randomUUID();
+    const artifactId = randomUUID();
+    // Persist only metadata intentionally: no file exists at the bound path.
+    // Neither a visual pass nor old approval establishes the current bytes.
+    const artifacts = [{ id: artifactId, kind: 'resume', relativePath: `artifacts/${artifactId}.pdf`,
+      url: `/api/jobs/artifacts/${artifactId}`, contentHash: 'a'.repeat(64) }];
+    await sql`INSERT INTO job_material_manifests(id,lead_id,selection_id,input_hash,state,manifest,artifacts,validation,attempts)
+      VALUES(${materialId},${leadId},${selection.id},${inputHash},'current',${JSON.stringify(manifest)}::jsonb,
+        ${JSON.stringify(artifacts)}::jsonb,'{"visual":"passed"}'::jsonb,1)`;
+    await sql`INSERT INTO job_application_drafts(lead_id,resume_variant,outreach,claim_ids,truth_snapshot,review_status,material_manifest_id)
+      VALUES(${leadId},${manifest.claims.map((claim) => claim.claim).join('\n')},'',${manifest.claims.map((claim) => claim.id)},
+        ${JSON.stringify(manifest.claims)}::jsonb,'approved',${materialId})`;
+    const stagesBefore = await sql`SELECT id,state,attempts FROM job_work_stages ORDER BY id`;
+    const plan = await rpc(call, 'preparation.plan', { leadId });
+    assert.equal(plan.nextAction, 'needs_attention');
+    assert.equal(plan.canResume, false);
+    assert.equal(plan.approvalRequired, true);
+    assert.equal(plan.automaticSubmission, false);
+    assert.equal(plan.reviews, null);
+    assert.equal(plan.stages.material.id, materialId);
+    assert.match(plan.reason, /bytes or review inputs are unavailable/);
+    assert.deepEqual(await sql`SELECT id,state,attempts FROM job_work_stages ORDER BY id`, stagesBefore,
+      'reading a plan must not fabricate a review or consume an attempt');
+    await rpc(call, 'leads.update', { id: leadId, decision: 'pass' });
+    assert.equal((await rpc(call, 'preparation.plan', { leadId })).nextAction, 'skipped',
+      'human pass still outranks the missing-artifact blocker');
+  } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });

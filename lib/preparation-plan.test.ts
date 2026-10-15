@@ -8,6 +8,7 @@ const ready = (): PreparationPlanInput => ({
   activeBrief: true, pendingBrief: false,
   assessment: complete('assessment'), selection: complete('selection'),
   material: { id: 'material', state: 'current', attempts: 1, visual: 'passed' },
+  evaluation: { ...complete('evaluation'), passed: true }, recruiter: complete('recruiter'),
   draftApproved: true,
 });
 
@@ -170,6 +171,8 @@ test('planner is deterministic, read-only, isolated across jobs and independent 
   Object.freeze(a.assessment);
   Object.freeze(a.selection);
   Object.freeze(a.material);
+  Object.freeze(a.evaluation);
+  Object.freeze(a.recruiter);
   Object.freeze(a);
   const expected = planPreparation(a);
   const b = ready();
@@ -204,3 +207,99 @@ for (const applicationStage of ['applied', 'interviewing', 'offer', 'closed']) {
     }
   });
 }
+
+
+test('missing and stale evaluations run only after visual inspection, despite prior draft approval', () => {
+  for (const evaluation of [undefined, { id: 'evaluation', state: 'stale', attempts: 2, passed: true }]) {
+    const input = { ...ready(), evaluation };
+    input.material!.visual = 'pending';
+    expectAction(input, 'review_materials');
+    input.material!.visual = 'passed';
+    const plan = expectAction(input, 'evaluate_resume');
+    assert.equal(plan.canResume, true);
+    assert.equal(plan.approvalRequired, false);
+    assert.deepEqual(plan.toolHint, { name: 'job_hunt_evaluate_resume' });
+  }
+});
+
+test('pending evaluation waits without duplicating work or advancing advisory review', () => {
+  for (const attempts of [0, 1, 2]) {
+    const input = ready();
+    input.evaluation = { id: 'evaluation', state: 'pending', attempts, passed: true };
+    input.recruiter = undefined;
+    const plan = expectAction(input, 'wait_for_evaluation');
+    assert.equal(plan.canResume, false);
+    assert.equal(plan.approvalRequired, false);
+    assert.equal(plan.toolHint, undefined);
+  }
+});
+
+test('failed, incomplete and unrecognized evaluations fail closed before advisory and user approval', () => {
+  for (const state of ['complete', 'needs_attention', 'unknown']) {
+    for (const passed of [undefined, false, true]) {
+      if (state === 'complete' && passed === true) continue;
+      const input = ready();
+      input.evaluation = { id: 'evaluation', state, attempts: 1, passed };
+      input.recruiter = undefined;
+      const plan = expectAction(input, 'needs_attention');
+      assert.equal(plan.canResume, false);
+      assert.equal(plan.approvalRequired, true);
+      assert.equal(plan.toolHint, undefined);
+    }
+  }
+});
+
+test('advisory review resumes missing, stale and bounded pending work; exhausted and invalid states stop', () => {
+  const cases = [
+    { state: undefined, attempts: 0, resumable: true },
+    { state: 'stale', attempts: 2, resumable: true },
+    { state: 'pending', attempts: 0, resumable: true },
+    { state: 'pending', attempts: 1, resumable: true },
+    ...[2, 3, -1, 0.5, NaN, Infinity].map((attempts) => ({ state: 'pending', attempts, resumable: false })),
+    { state: 'needs_attention', attempts: 0, resumable: false },
+    { state: 'unknown', attempts: 0, resumable: false },
+  ];
+  for (const row of cases) {
+    const input = ready();
+    input.recruiter = row.state ? { id: 'recruiter', state: row.state, attempts: row.attempts } : undefined;
+    const plan = expectAction(input, row.resumable ? 'review_recruiter' : 'needs_attention');
+    assert.equal(plan.canResume, row.resumable);
+    assert.equal(plan.approvalRequired, !row.resumable);
+    assert.deepEqual(plan.toolHint, row.resumable ? { name: 'job_hunt_recruiter_packet' } : undefined);
+  }
+});
+
+test('passing evaluation and completed advisory review cannot supply human draft approval', () => {
+  const input = ready();
+  input.draftApproved = false;
+  input.recruiter = undefined;
+  expectAction(input, 'review_recruiter');
+  input.recruiter = complete('recruiter');
+  const approval = expectAction(input, 'approve_draft');
+  assert.equal(approval.approvalRequired, true);
+  assert.equal(approval.canResume, false);
+  assert.equal(approval.toolHint, undefined);
+  input.draftApproved = true;
+  expectAction(input, 'ready_for_user_submission');
+});
+
+test('submission reconciliation, terminal states and human choices outrank missing artifact reviews', () => {
+  const input = ready();
+  input.evaluation = undefined;
+  input.recruiter = undefined;
+  input.draftApproved = false;
+  for (const attemptState of ['pending', 'uncertain'] as const) {
+    input.attemptState = attemptState;
+    expectAction(input, 'reconcile_submission');
+  }
+  input.attemptState = 'confirmed';
+  expectAction(input, 'complete');
+  input.attemptState = undefined;
+  input.lead.decision = 'pass';
+  expectAction(input, 'skipped');
+  input.lead.decision = 'review';
+  assert.equal(expectAction(input, 'choose_job').approvalRequired, true);
+  input.pendingBrief = true;
+  input.activeBrief = false;
+  assert.equal(expectAction(input, 'review_search_brief').approvalRequired, true);
+});

@@ -1,3 +1,4 @@
+import { artifactReviewStatus } from './artifact-review';
 import type { Sql } from '../../lib/job-storage';
 import { refreshWorkflow, makeMaterialManifest, materialFingerprint } from '../../lib/job-workflow';
 import { readBriefState } from '../../lib/search-brief-store';
@@ -5,7 +6,7 @@ import { planPreparation } from '../../lib/preparation-plan';
 
 /** A resumable read model over existing durable stages, not a second queue or
  * executor. This method never calls a provider, renders, collects or submits. */
-export async function preparationPlan(leadId: string, sql: Sql) {
+export async function preparationPlan(leadId: string, sql: Sql, root?: string) {
   const context = await refreshWorkflow(leadId, sql);
   const [attempt] = await sql`SELECT a.state FROM jobdesk_submission_attempts a
     JOIN job_application_batch_items i ON i.id=a.item_id WHERE i.lead_id=${leadId}
@@ -30,14 +31,20 @@ export async function preparationPlan(leadId: string, sql: Sql) {
         attempts: row.attempts, visual: row.validation?.visual };
     }
   }
+  let reviews;
+  if (material?.state === 'current' && root) {
+    try { reviews = await artifactReviewStatus(leadId, sql, root); }
+    catch { materialBlocker = 'Current résumé bytes or review inputs are unavailable. Rebuild or inspect the artifact before continuing.'; }
+  }
   const brief = await readBriefState(sql);
   const plan = planPreparation({ lead: { decision: context.lead.decision, applicationStage: context.lead.applicationStage,
     verified: context.lead.verificationStatus === 'verified' && Boolean(context.lead.postingText && context.lead.postingSourceNote) },
     attemptState: attempt?.state, activeBrief: Boolean(brief.active), pendingBrief: Boolean(brief.draft),
     assessment: assessment ? { id: String(assessment.id), state: String(assessment.state), attempts: Number(assessment.attempts) } : undefined,
     selection: selection ? { id: String(selection.id), state: String(selection.state), attempts: Number(selection.attempts) } : undefined, material, materialBlocker,
+    evaluation: reviews?.evaluation ?? undefined, recruiter: reviews?.recruiter ?? undefined,
     draftApproved: draft?.review_status === 'approved' && Boolean(material && draft.material_manifest_id === material.id) });
-  return { leadId, ...plan, approvedSearchBrief: brief.active?.identity ?? null,
+  return { leadId, ...plan, reviews: reviews ?? null, approvedSearchBrief: brief.active?.identity ?? null,
     stages: { assessment: assessment ? { id: assessment.id, state: assessment.state } : null,
       selection: selection ? { id: selection.id, state: selection.state } : null,
       material: material ? { id: material.id, state: material.state } : null } };

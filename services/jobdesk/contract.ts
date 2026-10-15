@@ -5,12 +5,31 @@ import { projectTruthSchema, resumeImportSchema, reviewBatchSchema } from '../..
 import { leaseSchema, claimSchema } from './queue';
 import { draftBindingSchema } from './submission-draft';
 import { manualDraftSchema } from './manual-draft';
+import { workflowSettingsSchema, stageSchema } from '../../lib/job-workflow';
+import { collectionRequestSchema } from '../../lib/job-collection';
 
 const id = z.string().regex(/^[a-f0-9]{64}$/);
 const text = z.string().max(1000);
 const lease = leaseSchema;
 export const methodSchemas = {
   health: z.tuple([]),
+  'collection.run': z.tuple([collectionRequestSchema]),
+  'collection.status': z.tuple([]),
+  'workflow.settings': z.tuple([]),
+  'workflow.configure': z.tuple([workflowSettingsSchema]),
+  'workflow.packet': z.tuple([z.object({ leadId: id, stage: stageSchema, revision: z.string().max(2000).optional() }).strict()]),
+  'workflow.save': z.tuple([z.object({ packetId: z.uuid(), inputHash: id, result: z.unknown() }).strict()]),
+  'workflow.claims': z.tuple([z.object({ query: z.string().max(2000).optional(), offset: z.number().int().nonnegative().max(100000).optional(),
+    limit: z.number().int().min(1).max(30).optional(), ids: z.array(z.string().max(160)).min(1).max(30).optional(), catalogHash: id.optional(), textOffset: z.number().int().nonnegative().max(4000).optional() }).strict()]),
+  'workflow.sources': z.tuple([z.array(z.string().min(1).max(160)).min(1).max(10)]),
+  'workflow.posting': z.tuple([z.object({ leadId: id, offset: z.number().int().nonnegative().max(30000).default(0), postingHash: id.optional() }).strict()]),
+  'workflow.savePosting': z.tuple([z.object({ leadId: id, text: z.string().min(200).max(30000), sourceNote: z.string().min(8).max(500) }).strict()]),
+  'workflow.status': z.tuple([z.object({ leadId: id.optional() }).strict()]),
+  'workflow.jobs': z.tuple([z.object({ offset: z.number().int().nonnegative().max(100000).optional(), includeExcluded: z.boolean().optional() }).strict()]),
+  'workflow.build': z.tuple([z.object({ leadId: id, repair: z.boolean().default(false) }).strict()]),
+  'workflow.review': z.tuple([z.object({ id: z.uuid(), inputHash: id, passed: z.boolean(), note: z.string().min(8).max(1000) }).strict()]),
+  'exclusions.list': z.union([z.tuple([]), z.tuple([z.object({ offset: z.number().int().nonnegative().max(100000).optional() }).strict()])]),
+  'exclusions.restore': z.tuple([z.uuid()]),
   'truth.list': z.tuple([]),
   'truth.versions': z.tuple([z.string().min(1).max(160)]),
   'truth.review': z.tuple([reviewBatchSchema]),

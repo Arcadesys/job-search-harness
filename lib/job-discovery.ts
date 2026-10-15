@@ -54,6 +54,7 @@ export function parseGoogleAlertsFeed(xml: string): SearchResult[] {
   if (xml.length > 2_000_000) throw new Error('Google Alert feed is too large.');
   if (/<!DOCTYPE|<!ENTITY/i.test(xml) || XMLValidator.validate(xml) !== true) throw new Error('Google Alert returned invalid XML.');
   const document = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', removeNSPrefix: true, processEntities: true }).parse(xml);
+  if (!Object.hasOwn(document ?? {}, 'feed') && !Object.hasOwn(document?.rss ?? {}, 'channel')) throw new Error('Google Alert did not return a feed.');
   const entries = document?.feed?.entry ?? document?.rss?.channel?.item ?? [];
   const items = Array.isArray(entries) ? entries : [entries];
   return items.slice(0, 50).map((entry: Record<string, unknown>) => {
@@ -158,7 +159,7 @@ export async function ingestSearchResults(results: SearchResult[], queryId: stri
       SELECT * FROM jsonb_to_recordset(${payload}::jsonb) AS x(id text,source_url text,title text,organization text,snippet text,source text)
     ) INSERT INTO job_leads (id,source_url,title,organization,snippet,source)
       SELECT id,source_url,title,organization,snippet,source FROM incoming
-      ON CONFLICT (source_url) DO UPDATE SET last_checked_at=now(),updated_at=now()
+      ON CONFLICT (source_url) DO UPDATE SET title=EXCLUDED.title,snippet=EXCLUDED.snippet,last_seen_at=now(),last_checked_at=now(),updated_at=now()
       RETURNING (xmax = 0) AS inserted`;
   const created = rows.filter((row) => row.inserted === true || row.inserted === 't').length;
   return { seen: leads.length, created };

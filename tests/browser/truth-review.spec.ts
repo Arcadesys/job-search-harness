@@ -150,8 +150,12 @@ test('tab order reaches selection, editing, comparison and approval without poin
   await reach(row(page, 'experience.3.title').getByRole('button', { name: /^Edit:/ }));
   await page.keyboard.press('Enter');
   await expect(page.getByRole('textbox', { name: 'Claim', exact: true })).toBeFocused();
+  // Delay animation-frame callbacks indefinitely. Cancelling an edit must
+  // restore focus before the next keypress, even on a busy/backgrounded tab.
+  await page.evaluate(() => { window.requestAnimationFrame = () => 0; });
   await reach(page.getByRole('button', { name: 'Cancel', exact: true }));
   await page.keyboard.press('Enter');
+  await expect(row(page, 'experience.3.title').getByRole('button', { name: /^Edit:/ })).toBeFocused();
   await reach(page.getByRole('button', { name: /Compare related wording/ }));
   await page.keyboard.press('Enter');
   await expect(row(page, 'accomplishment.6').getByRole('checkbox')).toBeVisible();

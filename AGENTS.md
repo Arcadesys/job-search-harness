@@ -6,8 +6,9 @@
   no seeded résumé claims, searches, locations, employers or time zones. Tests
   use the fictional résumé in `tests/fixtures/sample-resume.ts`.
 - Everything stays on the user's computer. No analytics, no hosted fallback, and
-  no network calls except Google Alert feeds the user added and the drafting
-  provider they chose. Keep `Cache-Control: private, no-store` on cockpit responses.
+  no network calls except Google Alert feeds the user added, the explicitly run
+  Built In Chicago first-page/supplied-job-URL pilot, and the drafting provider
+  they chose. Keep `Cache-Control: private, no-store` on cockpit responses.
 - Drafts are assembled only from claims the user approved. Do not add a path
   that lets a model write claim text that has not been reviewed.
 - Nothing is recorded as submitted without a saved confirmation receipt, and

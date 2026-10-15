@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { clientEndpoint } from './paths.mjs';
+import { workflowTools } from './workflow-tools.mjs';
 
 // Thin IPC consumer: never opens PGlite, accesses Keychain, or falls back online.
 export function localCall(method, args, socketPath) {
@@ -136,6 +137,7 @@ export function createLocalApiClient({
   const text = (maxLength, minLength = 1) => ({ type: 'string', minLength, maxLength });
   const list = (maxItems) => ({ type: 'array', items: text(4000), maxItems });
   request.workerTools = [
+    ...workflowTools(call),
     {
       name: 'job_hunt_setup_status',
       description:

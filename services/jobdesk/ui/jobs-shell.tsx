@@ -1,8 +1,10 @@
 
-type View = 'today' | 'leads' | 'truths' | 'review' | 'settings';
+type View = 'today' | 'leads' | 'truths' | 'review' | 'settings' | 'workflow' | 'excluded';
 const navigation: { id: View; label: string; href: string }[] = [
   { id: 'today', label: 'Today', href: '/jobs' },
   { id: 'leads', label: 'Leads', href: '/jobs/leads' },
+  { id: 'workflow', label: 'Discovery and preparation', href: '/jobs/workflow' },
+  { id: 'excluded', label: 'Excluded jobs', href: '/jobs/excluded' },
   { id: 'truths', label: 'Résumé truths', href: '/jobs/truths' },
   { id: 'review', label: 'Weekly review', href: '/jobs/review' },
   { id: 'settings', label: 'Settings', href: '/jobs/settings' },
@@ -16,7 +18,7 @@ export default function JobsShell({ active, children, truthReview = false, sessi
       <p className="jobsSidebarNote">Your applications and résumé truths stay private.</p>
     </aside>
     <div className="jobsMainColumn">
-      <div className="jobsTopbar"><span>Job Search Harness</span><span className="jobsPrivateBadge">Private · {sessionLabel}</span></div>
+      <header className="jobsTopbar"><span>Job Search Harness</span><span className="jobsPrivateBadge">Private · {sessionLabel}</span></header>
       <main id="jobs-content" className="jobsContent">{children}</main>
     </div>
   </div>;

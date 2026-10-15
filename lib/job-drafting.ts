@@ -1,6 +1,7 @@
 import type { Sql } from './job-storage';
 import { listResumeTruth, type TruthClaim } from '@/lib/resume-truth';
 import { estimateCost, type AssessmentProvider } from './drafting-assessment';
+import { JobdeskError } from '../services/jobdesk/errors';
 
 export const MONTHLY_AI_BUDGET_USD = 8.5;
 
@@ -23,12 +24,13 @@ export async function getDraftingLead(id: string, sql: Sql) {
   return rows[0] ?? null;
 }
 
-export async function saveOriginalPosting(id: string, text: string, note: string, sql: Sql): Promise<void> {
+export async function saveOriginalPosting(id: string, text: string, note: string, sql: Sql, actor: 'user' | 'assistant' = 'user'): Promise<void> {
   const content = text.trim();
   const sourceNote = note.trim();
   if (content.length < 200 || content.length > 30000) throw new Error('Paste at least 200 characters of the original posting (up to 30,000).');
   if (sourceNote.length < 8 || sourceNote.length > 500) throw new Error('Add a source note confirming where this original posting text came from.');
-  await sql`UPDATE job_leads SET posting_text=${content},posting_source_note=${sourceNote},verification_status='verified',last_checked_at=now(),updated_at=now() WHERE id=${id}`;
+  const userVerifiedAt = actor === 'user' ? new Date().toISOString() : null;
+  await sql`UPDATE job_leads SET posting_text=${content},posting_source_note=${sourceNote},verification_status='verified',last_checked_at=now(),user_verified_at=${userVerifiedAt}::timestamptz,updated_at=now() WHERE id=${id}`;
 }
 
 export async function currentAiUsage(sql: Sql) {
@@ -117,6 +119,8 @@ export async function assessAndDraft(leadId: string, sql: Sql, provider: Assessm
 }
 
 export async function saveDraftEdits(leadId: string, resumeVariant: string, outreach: string, sql: Sql) {
+  const [draft] = await sql`SELECT material_manifest_id FROM job_application_drafts WHERE lead_id=${leadId}`;
+  if (draft?.material_manifest_id) throw new JobdeskError('WORKFLOW_REJECTED', 'Revise the saved claim selection and rebuild these materials. Free-text edits would break their approved-claim binding.');
   if (resumeVariant.length > 12000 || outreach.length > 3000) throw new Error('Draft is too long.');
   await sql`UPDATE job_application_drafts SET resume_variant=${resumeVariant},outreach=${outreach},updated_at=now() WHERE lead_id=${leadId}`;
 }

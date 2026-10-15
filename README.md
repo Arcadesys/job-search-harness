@@ -17,6 +17,13 @@ The design is written up at
 
 ## Install
 
+**macOS desktop app (local preview):** run `npm ci` and `npm run build` on a Mac.
+Open `dist/Job Search Harness-arm64.dmg` (Intel builds use `x64`), then drag
+**Job Search Harness.app** into **Applications**. Open it from Applications.
+The app includes Electron and Node; no separate runtime is needed. This preview
+is ad hoc signed, without Developer ID notarization. See [desktop build and data
+lifetime](docs/electron-desktop.md).
+
 **macOS + Claude Desktop (preview):** download the self-contained Intel or Apple Silicon ZIP from the [macOS installer workflow](https://github.com/Arcadesys/job-search-harness/actions/workflows/macos-installer.yml), unzip it, and double-click **Install Job Search Harness.command**. Confirm the changes, restart Claude Desktop, then double-click **Open Job Search Harness.command** in the installed app folder. No separate Node installation or manual JSON editing is required. See [installation, upgrade and recovery details](docs/macos-installer.md). The preview is unsigned and needs real-Mac validation before a formal release.
 
 **Manual installation (all platforms):** setup needs [Node.js 22 or later](https://nodejs.org/).

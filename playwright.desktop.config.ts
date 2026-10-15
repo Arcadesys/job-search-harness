@@ -7,5 +7,6 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   outputDir: path.join(tmpdir(), 'job-search-harness-desktop'),
-  reporter: 'line',
+  // On CI, failures also become GitHub annotations, readable without downloading logs.
+  reporter: process.env.CI ? [['github'], ['line']] : 'line',
 });

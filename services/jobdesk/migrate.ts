@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { resource } from '../../lib/resources';
 import path from 'node:path';
 import type { PGlite } from '@electric-sql/pglite';
 
-export const MIGRATIONS = fileURLToPath(new URL('../../db/migrations/', import.meta.url));
+/** Resolved when used, so the desktop app can point JOBDESK_RESOURCES at its bundle first. */
+export const migrationsDirectory = () => resource('db', 'migrations');
 export async function migrate(
   db: PGlite,
-  directory = MIGRATIONS,
+  directory = migrationsDirectory(),
   beforeUpgrade?: () => Promise<unknown>,
 ) {
   const files = (await readdir(directory))

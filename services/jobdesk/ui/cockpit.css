@@ -282,3 +282,14 @@
   .ck .ck-steps .ck-step-state { grid-column:2; }
   .ck .ck-barrow { grid-template-columns:6rem minmax(0,1fr) 2rem; }
 }
+
+/* Setup guide */
+.ck .ck-stepper { list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:.5rem; }
+.ck .ck-stepper button { min-height:2.9rem; padding:.3rem 1rem .3rem .4rem; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--muted); font:inherit; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:.6rem; }
+.ck .ck-stepper button > span:first-child { width:2rem; height:2rem; border-radius:50%; display:grid; place-items:center; background:var(--raised); color:var(--text); flex:none; }
+.ck .ck-stepper [aria-current="step"] button { border-color:var(--border-strong); background:var(--accent-soft); color:var(--text); }
+.ck .ck-stepper [aria-current="step"] button > span:first-child { background:var(--accent); color:var(--accent-text); }
+.ck .ck-stepper .is-done button > span:first-child { background:var(--ok); color:var(--accent-text); }
+.ck .ck-drop { display:grid !important; gap:.5rem; padding:1.25rem; border:2px dashed var(--field-border); border-radius:var(--r-card); }
+.ck .ck-drop input[type="file"] { min-height:0; margin:0; padding:.6rem; border-style:solid; cursor:pointer; }
+.ck .ck-card h3 { font-size:1.15rem; }

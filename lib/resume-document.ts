@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fontDirectory } from './resources';
 import path from 'node:path';
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, PDFName, PDFString, rgb } from 'pdf-lib';
@@ -10,7 +10,7 @@ type Line = { text: string; x: number; y: number; width: number; height: number;
 export async function renderResumeDocument(manifest: MaterialManifest, links: WorkflowSettings['links'], outreachOnly = false) {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
-  const directory = fileURLToPath(new URL('../assets/fonts/', import.meta.url));
+  const directory = fontDirectory();
   const regular = await doc.embedFont(await readFile(path.join(directory, 'AtkinsonHyperlegible-Regular.ttf')));
   const bold = await doc.embedFont(await readFile(path.join(directory, 'AtkinsonHyperlegible-Bold.ttf')));
   const supported = { regular: new Set(regular.getCharacterSet()), bold: new Set(bold.getCharacterSet()) };

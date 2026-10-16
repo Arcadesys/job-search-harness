@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fontDirectory } from '../../lib/resources';
 import { renderResumeDocument } from '../../lib/resume-document';
 import { renderApplicationPdf } from '../../lib/job-pdf';
 import { makeMaterialManifest, materialFingerprint, refreshWorkflow, selectionSchema, verifyArtifactFiles, type MaterialManifest } from '../../lib/job-workflow';
@@ -69,7 +69,7 @@ export async function buildMaterials(leadId: string, store: JobdeskStore, repair
     const review = await renderApplicationPdf(snapshot.context.lead as Parameters<typeof renderApplicationPdf>[0], {
       resumeVariant: snapshot.manifest.sections.map((section) => `${section.heading}\n${section.lines.join('\n')}`).join('\n\n'),
       outreach: snapshot.manifest.outreach, truthSnapshot: snapshot.manifest.claims,
-    }, fileURLToPath(new URL('../../assets/fonts/', import.meta.url)));
+    }, fontDirectory());
     const rendered = [{ kind: 'resume', bytes: resume.bytes }, { kind: 'review', bytes: review }];
     if (snapshot.manifest.outreach) rendered.push({ kind: 'outreach', bytes: (await renderResumeDocument(snapshot.manifest, [], true)).bytes });
     const artifacts: { id: string; kind: string; relativePath: string; contentHash: string; url: string }[] = [];

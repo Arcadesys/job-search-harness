@@ -2,14 +2,15 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { chmod, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
 import { handleTruthReview } from '../../lib/resume-truth-http';
 import { JobdeskStore, DEFAULT_ROOT } from './store';
 import { createService, initializeService } from './service';
 import { JobdeskError } from './errors';
 import { recordActivity } from './cockpit';
 import { brokerEndpoint, isMainModule } from './paths.mjs';
+import { loadCockpit } from './ui-bundle';
+import { fontDirectory } from '../../lib/resources';
+import { extractResumeText, MAX_RESUME_BYTES } from '../../lib/resume-extract';
 
 const windows = process.platform === 'win32';
 
@@ -31,6 +32,19 @@ async function body(request: IncomingMessage) {
     chunks.push(chunk);
   }
   return JSON.parse(Buffer.concat(chunks).toString());
+}
+/** A résumé file, read into memory for local text extraction and never stored. */
+async function bytes(request: IncomingMessage) {
+  if (request.headers['content-type']?.split(';')[0] !== 'application/octet-stream')
+    throw new Error('Binary content type required.');
+  const chunks: Buffer[] = [];
+  let length = 0;
+  for await (const chunk of request) {
+    length += chunk.length;
+    if (length > MAX_RESUME_BYTES) throw new Error('Request body too large.');
+    chunks.push(chunk);
+  }
+  return new Uint8Array(Buffer.concat(chunks));
 }
 function json(response: ServerResponse, status: number, data: unknown) {
   response.writeHead(status, { ...PRIVATE_HEADERS, 'Content-Type': 'application/json' });
@@ -73,23 +87,9 @@ export async function startJobdesk({
     // database lock has been acquired. It is never a remote listener. Windows
     // named pipes vanish with their process, so there is nothing to remove.
     if (!windows) await rm(socketPath, { force: true });
-    const built = await build({
-      entryPoints: [fileURLToPath(new URL('./ui.tsx', import.meta.url))],
-      bundle: true,
-      write: false,
-      platform: 'browser',
-      format: 'iife',
-      jsx: 'automatic',
-      define: { 'process.env.NODE_ENV': '"production"' },
-    });
-    const css =
-      (await readFile(new URL('./ui/base.css', import.meta.url), 'utf8')) +
-      '\n' +
-      (await readFile(new URL('./ui/jobs.css', import.meta.url), 'utf8')) +
-      '\n' +
-      (await readFile(new URL('./ui/cockpit.css', import.meta.url), 'utf8'));
+    const cockpit = await loadCockpit();
     const fonts = new Map<string, Buffer>(await Promise.all(['AtkinsonHyperlegible-Regular.ttf', 'AtkinsonHyperlegible-Bold.ttf'].map(
-      async (name) => [`/fonts/${name}`, await readFile(new URL(`../../assets/fonts/${name}`, import.meta.url))] as const)));
+      async (name) => [`/fonts/${name}`, await readFile(path.join(fontDirectory(), name))] as const)));
     let origin = '';
     web = createServer(async (req, res) => {
       try {
@@ -107,12 +107,12 @@ export async function startJobdesk({
         const url = new URL(req.url ?? '/', origin);
         if (req.method === 'GET' && url.pathname === '/app.js') {
           res.writeHead(200, { ...PRIVATE_HEADERS, 'Content-Type': 'text/javascript' });
-          res.end(built.outputFiles[0].text);
+          res.end(cockpit.js);
           return;
         }
         if (req.method === 'GET' && url.pathname === '/app.css') {
           res.writeHead(200, { ...PRIVATE_HEADERS, 'Content-Type': 'text/css' });
-          res.end(css);
+          res.end(cockpit.css);
           return;
         }
         if (req.method === 'GET' && fonts.has(url.pathname)) {
@@ -217,6 +217,14 @@ export async function startJobdesk({
             return;
           }
         }
+        if (req.method === 'POST' && url.pathname === '/api/resume/extract') {
+          try {
+            json(res, 200, { data: await extractResumeText(await bytes(req)) });
+          } catch (error) {
+            json(res, 422, { error: error instanceof Error ? error.message : 'This file could not be read.' });
+          }
+          return;
+        }
         if (req.method === 'POST' && url.pathname === '/api/jobdesk') {
           const input = await body(req);
           if (
@@ -285,6 +293,7 @@ export async function startJobdesk({
           setImmediate(onShutdownRequest);
           return;
         }
+        if (input.method === 'assistant.connect') throw new Error('Only the person using the cockpit can connect an assistant.');
         if (input.method === 'browser.open') {
           if (!Array.isArray(input.args) || input.args.length)
             throw new Error('Invalid launch arguments.');

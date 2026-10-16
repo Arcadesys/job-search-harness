@@ -25,6 +25,7 @@ import * as briefs from '../../lib/search-brief-store';
 import { preparationPlan } from './preparation';
 import { buildMaterials, reviewMaterials } from './materials';
 import * as cockpit from './cockpit';
+import { assistantStatus, connectAssistant } from './assistants';
 
 export const LOCAL_OWNER = 'local-user';
 
@@ -317,6 +318,8 @@ export function createService(store: JobdeskStore, options: { trustedUserActions
     'cockpit.pipeline': operation(schemas['cockpit.pipeline'], (_, sql) => cockpit.pipeline(sql)),
     'cockpit.lead': operation(schemas['cockpit.lead'], ([id], sql) => cockpit.leadView(id, sql)),
     'cockpit.reconcile': operation(schemas['cockpit.reconcile'], (_, sql) => cockpit.reconciliation(sql)),
+    'assistant.status': operation(schemas['assistant.status'], () => assistantStatus()),
+    'assistant.connect': operation(schemas['assistant.connect'], ([id, options]) => connectAssistant(id, {}, undefined, options)),
   };
   return async (message: unknown) => {
     const { method, args } = rpcSchema.parse(message);

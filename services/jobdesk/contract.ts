@@ -160,6 +160,9 @@ export const methodSchemas = {
   'cockpit.pipeline': z.tuple([]),
   'cockpit.lead': z.tuple([id]),
   'cockpit.reconcile': z.tuple([]),
+  'assistant.status': z.tuple([]),
+  'assistant.connect': z.union([z.tuple([z.enum(['claude', 'codex'])]),
+    z.tuple([z.enum(['claude', 'codex']), z.object({ replace: z.boolean() }).strict()])]),
 } as const;
 export type Method = keyof typeof methodSchemas;
 export type Args<M extends Method> = z.infer<(typeof methodSchemas)[M]>;

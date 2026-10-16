@@ -17,40 +17,34 @@ The design is written up at
 
 ## Install
 
-**macOS desktop app (local preview):** run `npm ci` and `npm run build` on a Mac.
-Open `dist/Job Search Harness-arm64.dmg` (Intel builds use `x64`), then drag
-**Job Search Harness.app** into **Applications**. Open it from Applications.
-The app includes Electron and Node; no separate runtime is needed. This preview
-is ad hoc signed, without Developer ID notarization. See [desktop build and data
-lifetime](docs/electron-desktop.md).
+1. **Download** the installer for your computer from the
+   [latest release](https://github.com/Arcadesys/job-search-harness/releases/latest):
+   - **Mac:** the `.dmg` (`arm64` for Apple silicon, `x64` for older Intel Macs). Open it and drag
+     Job Search Harness into Applications.
+   - **Windows:** the `.exe`. Run it; it installs for you only and needs no administrator rights.
+   - **Linux:** the `.AppImage` (make it executable and run it) or the `.deb` for Ubuntu and Debian.
+2. **Open Job Search Harness.** A short setup guide walks you through three steps:
+   - **Connect your AI.** One click adds the app to Claude Desktop or the ChatGPT desktop app
+     (Codex). You stay signed in to your assistant as usual; this app never sees your password.
+     Restart the assistant afterwards. You can also paste an Anthropic or OpenAI API key to
+     draft inside the app instead.
+   - **Say what you want:** the role, place, minimum salary and employers to skip.
+   - **Add your résumé:** choose a PDF or Word file, or paste the text. It is read on your
+     computer, and each line becomes a claim you approve before it is used.
 
-**macOS + Claude Desktop (preview):** download the self-contained Intel or Apple Silicon ZIP from the [macOS installer workflow](https://github.com/Arcadesys/job-search-harness/actions/workflows/macos-installer.yml), unzip it, and double-click **Install Job Search Harness.command**. Confirm the changes, restart Claude Desktop, then double-click **Open Job Search Harness.command** in the installed app folder. No separate Node installation or manual JSON editing is required. See [installation, upgrade and recovery details](docs/macos-installer.md). The preview is unsigned and needs real-Mac validation before a formal release.
+The app keeps running in the menu bar (Mac) or system tray (Windows) so your assistant can reach
+it, and your assistant starts it again if it is closed.
 
-**Manual installation (all platforms):** setup needs [Node.js 22 or later](https://nodejs.org/).
+> **Unsigned builds.** Until the releases are code-signed, your computer warns about an
+> unidentified developer. On a Mac, right-click the app, choose **Open**, then **Open** again.
+> On Windows, choose **More info**, then **Run anyway**.
 
-1. Download this repository (green **Code** button, then **Download ZIP**) and unzip it
-   somewhere permanent, such as your Documents folder.
-2. Open a terminal in that folder and run:
+Used the earlier macOS installer preview? Install the app; it takes over the same data and
+Claude connection on first launch ([details](docs/desktop-release.md#upgrading-from-the-macos-installer-preview)).
 
-   ```sh
-   npm install
-   npm run jobs:cli -- start-background
-   ```
-
-3. Connect your assistant. Point it at `services/jobdesk/mcp-server.mjs` in that
-   folder, using the full path:
-   - **Claude Desktop:** Settings → Developer → Edit Config, then add
-     ```json
-     { "mcpServers": { "job-search-harness": { "command": "node", "args": ["/full/path/to/services/jobdesk/mcp-server.mjs"] } } }
-     ```
-   - **ChatGPT desktop (Codex mode) or Codex:** add to `~/.codex/config.toml`
-     ```toml
-     [mcp_servers.job-search-harness]
-     command = "node"
-     args = ["/full/path/to/services/jobdesk/mcp-server.mjs"]
-     ```
-   Restart the assistant afterwards.
-4. Open your workspace with `npm run jobs:cli -- open`.
+Prefer the command line, or contributing? See [Development](#development); a source checkout
+needs [Node.js 22 or later](https://nodejs.org/) and connects with
+`node /full/path/to/services/jobdesk/mcp-server.mjs` as the MCP command.
 
 ## Get started
 
@@ -95,11 +89,15 @@ npm run test:jobdesk       # owner, broker, MCP and migration tests
 npx playwright install chromium
 npm run test:jobdesk:browser && npm run test:truths
 npm start                  # foreground owner on 127.0.0.1:4317
+npm run desktop            # build and open the desktop app
+npm run desktop:dist       # build installers for this platform into release/
+xvfb-run -a npm run test:desktop   # first-run test of the staged app (no xvfb on macOS/Windows)
 ```
 
 | Path | What it is |
 | --- | --- |
 | `services/jobdesk` | Owner, broker, CLI, MCP adapter (`mcp-server.mjs`) and cockpit UI |
+| `desktop/` | Electron app: window, tray, owner start-up; see [desktop releases](docs/desktop-release.md) |
 | `lib/` | Truths, discovery, drafting, queue, review, settings and PDF rendering |
 | `db/migrations` | Checksummed migrations; never edit one that has shipped |
 | `docs/` | [Jobdesk design](docs/local-jobdesk.md) and [MCP tools](docs/jobs-mcp-api.md) |

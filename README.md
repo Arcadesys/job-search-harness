@@ -15,6 +15,16 @@ submitted until you have the employer's confirmation.
 The design is written up at
 [work.thearcades.me/work/job-search-cockpit](https://work.thearcades.me/work/job-search-cockpit).
 
+## Engineering to explore
+
+- **Approved claims become the source of drafts:** [drafting and review logic](lib/) keeps résumé content tied to user-reviewed words.
+- **Recoverable work:** [durable workflows](docs/durable-workflows.md) separate collection from assistant judgment and reuse unchanged work.
+- **One local owner:** [jobdesk services](services/jobdesk/) coordinate the database, broker, MCP adapter, and desktop UI; [tests](tests/) and colocated service tests exercise those boundaries.
+
+**Try it:** use the [installer steps below](#install), or the [development setup](#development). The source is public; your résumé, search history, and application records stay in your local workspace.
+
+**Collaborator starting point:** read the [jobdesk design](docs/local-jobdesk.md) and [MCP contract](docs/jobs-mcp-api.md), then explore owner recovery or drafting against the fictional test fixtures. Keep personal records out of code and tests.
+
 ## Install
 
 1. **Download** the installer for your computer from the

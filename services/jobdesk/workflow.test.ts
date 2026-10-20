@@ -7,7 +7,7 @@ import { createService, initializeService } from './service';
 import { tempRoot } from '../../tests/fixtures/temp-root';
 import { loadSample } from '../../tests/fixtures/sample-resume';
 import { leadIdForUrl } from '../../lib/job-discovery';
-import { PACKET_LIMIT, TEMPLATE_VERSION, rankClaims, makeMaterialManifest, workflowContext } from '../../lib/job-workflow';
+import { PACKET_LIMIT, TEMPLATE_VERSION, rankClaims, makeMaterialManifest, workflowContext, selectionSchema } from '../../lib/job-workflow';
 import { payloadBytes } from '../../lib/workflow-hash';
 import { parseBuiltinJob, runCollection } from '../../lib/job-collection';
 
@@ -38,6 +38,128 @@ async function addVerified(call: ReturnType<typeof createService>, url = URL) {
   return id;
 }
 
+test('selection contract and bounded repair guidance preserve exact saves, replay and claim boundaries', async () => {
+  const { root, store, call } = await setup();
+  try {
+    const leadId = await addVerified(call);
+    let revision = 0;
+    const packet = async () => {
+      const assessment: any = await call({ method: 'workflow.packet', args: [{ leadId, stage: 'assessment' }] });
+      await call({ method: 'workflow.save', args: [{ packetId: assessment.id, inputHash: assessment.inputHash,
+        result: { recommendation: 'candidate', reasons: [{ text: 'Fictional fit.', evidence: 'cross-functional programs' }], uncertainties: [], claimIds: [] } }] });
+      const selected: any = await call({ method: 'workflow.packet', args: [{ leadId, stage: 'selection', revision: `Fictional guidance case ${revision++}` }] });
+      assert.ok(payloadBytes(selected) <= PACKET_LIMIT);
+      return selected;
+    };
+    const valid = { template: TEMPLATE_VERSION, sections: [{ kind: 'experience', claimIds: ['experience.1.claim.1'] }], outreach: false, unresolved: [] };
+    const save = (p: any, result: unknown): Promise<any> => call({ method: 'workflow.save', args: [{ packetId: p.id, inputHash: p.inputHash, result }] });
+    const first = await packet();
+    assert.deepEqual(first.responseContract.sectionKinds, selectionSchema.shape.sections.element.shape.kind.options);
+    assert.deepEqual(first.responseContract.fields.split(','), Object.keys(selectionSchema.shape));
+    assert.equal(first.responseContract.template, TEMPLATE_VERSION);
+    assert.match(first.instructions, /Use only.*sections:\[\{kind,claimIds:ID\[\]\}\]/);
+    assert.equal(first.candidates.length, 8, 'contract guidance preserves the baseline ranked hint coverage');
+    assert.match(first.selectionRules.join(' '), /no prose or repeats.*non-profile.*contiguous.*Auto-insert reviewed.*profile\.name.*email,phone,website.*employer,title,dates.*unresolved must be \[\]/);
+    const context = await workflowContext(leadId, store.sql);
+    const ranked = rankClaims(context.claims, `${context.lead.title} ${context.posting}`, context.assessment?.result?.claimIds ?? []).slice(0, 8);
+    assert.deepEqual(first.candidates.map((c: any) => c.id), ranked.slice(0, first.candidates.length).map(c => c.id), 'packing keeps the same ranked prefix');
+    const requiredIds = ['profile.name', 'profile.email', 'experience.1.employer', 'experience.1.title', 'experience.1.dates'];
+    const required: any = await call({ method: 'workflow.claims', args: [{ ids: requiredIds, catalogHash: first.catalogHash }] });
+    assert.deepEqual(required.claims.map((c: any) => c.id), requiredIds, 'all structural metadata remains retrievable');
+    assert.equal((await save(first, valid)).state, 'complete');
+    const [original] = await store.sql`SELECT attempts,result FROM job_work_stages WHERE id=${first.id}`;
+    assert.equal(original.attempts, 1);
+    assert.deepEqual(original.result, valid);
+    const built: any = await call({ method: 'workflow.build', args: [{ leadId }] });
+    const manifests = await store.sql`SELECT id,attempts FROM job_material_manifests ORDER BY id`;
+    const replay = await save(first, { sections: [{ kind: 'PRIVATE_SENTINEL_DO_NOT_ECHO' }] });
+    assert.equal(replay.reused, true);
+    assert.deepEqual((await store.sql`SELECT attempts,result FROM job_work_stages WHERE id=${first.id}`)[0], original);
+    const cached: any = await call({ method: 'workflow.build', args: [{ leadId }] });
+    assert.equal(cached.reused, true); assert.equal(cached.id, built.id);
+    assert.deepEqual(await store.sql`SELECT id,attempts FROM job_material_manifests ORDER BY id`, manifests);
+    const secret = 'PRIVATE_SENTINEL_DO_NOT_ECHO';
+    const cases: { result: unknown; code: string; path: string; guidance: RegExp }[] = [
+      { result: { ...valid, sections: [{ kind: secret, claimIds: ['experience.1.claim.1'] }] }, code: 'invalid_value', path: 'sections.0.kind', guidance: /profile, summary, experience, accomplishments, skills, education, other/ },
+      { result: { ...valid, sections: secret }, code: 'invalid_type', path: 'sections', guidance: /array of sections/ },
+      { result: { ...valid, sections: Array.from({ length: 21 }, () => valid.sections[0]) }, code: 'too_big', path: 'sections', guidance: /at most 20 items/ },
+      { result: { ...valid, sections: [{ kind: 'experience', claimIds: [123] }] }, code: 'invalid_type', path: 'sections.0.claimIds.0', guidance: /claim ID string/ },
+      { result: { ...valid, [secret]: secret }, code: 'unrecognized_keys', path: 'result', guidance: /Remove undeclared fields/ },
+      { result: { ...valid, sections: [{ kind: 'experience', claimIds: [secret, secret] }] }, code: 'CLAIM_NOT_REVIEWED', path: 'sections', guidance: /reviewed claims/ },
+      { result: { ...valid, sections: [valid.sections[0], { kind: 'other', claimIds: ['experience.1.claim.1'] }] }, code: 'DUPLICATE_CLAIM_IDS', path: 'sections', guidance: /across all sections/ },
+      { result: { ...valid, sections: [{ kind: 'experience', claimIds: ['experience.1.claim.1', 'experience.2.claim.1', 'experience.1.claim.2'] }] }, code: 'ROLE_NOT_CONTIGUOUS', path: 'sections.0.claimIds', guidance: /contiguous group/ },
+      { result: { ...valid, sections: [{ kind: 'experience', claimIds: ['skills.1'] }] }, code: 'EXPERIENCE_GROUP_REQUIRED', path: 'sections.0.claimIds', guidance: /kind other/ },
+      { result: { ...valid, unresolved: [secret] }, code: 'UNRESOLVED_REQUIREMENTS', path: 'unresolved', guidance: /unresolved: \[\]/ },
+      { result: { ...valid, sections: [{ kind: 'profile', claimIds: ['profile.name'] }] }, code: 'NON_PROFILE_CLAIM_REQUIRED', path: 'sections', guidance: /non-profile claim/ },
+      { result: { ...valid, unresolved: [secret.repeat(1000)] }, code: 'RESULT_TOO_LARGE', path: 'result', guidance: /serialized result/ },
+    ];
+    for (const expected of cases) {
+      const p = await packet();
+      const rejected = await save(p, expected.result);
+      assert.equal(rejected.state, 'pending'); assert.equal(rejected.repairRemaining, 1);
+      assert.equal(rejected.issues[0].code, expected.code); assert.equal(rejected.issues[0].path, expected.path);
+      assert.match(rejected.issues[0].guidance, expected.guidance);
+      assert.ok(payloadBytes(rejected) < 2000);
+      assert.doesNotMatch(JSON.stringify(rejected), /PRIVATE_SENTINEL|Jordan|jordan@|Maple Analytics/);
+      assert.doesNotMatch((await store.sql`SELECT error FROM job_work_stages WHERE id=${p.id}`)[0].error, /PRIVATE_SENTINEL/);
+      assert.equal((await save(p, valid)).state, 'complete');
+      assert.equal((await store.sql`SELECT attempts FROM job_work_stages WHERE id=${p.id}`)[0].attempts, 2);
+    }
+    // Truncate diagnostics structurally; neither arbitrary keys nor invalid values may escape.
+    const malformed = await packet();
+    const many = await save(malformed, { ...valid, sections: Array.from({ length: 12 }, () => ({ kind: secret, claimIds: [], [secret]: secret })) });
+    assert.equal(many.issues.length, 5); assert.ok(payloadBytes(many) < 2000);
+    assert.doesNotMatch(JSON.stringify(many), /PRIVATE_SENTINEL/);
+    assert.equal((await save(malformed, {})).state, 'needs_attention');
+    assert.equal((await save(malformed, valid)).state, 'needs_attention');
+    const [stopped] = await store.sql`SELECT attempts,result FROM job_work_stages WHERE id=${malformed.id}`;
+    assert.equal(stopped.attempts, 2); assert.equal(stopped.result, null);
+    const stale = await packet();
+    await call({ method: 'workflow.configure', args: [{ preferences: 'Fictional changed preference.' }] });
+    await assert.rejects(save(stale, valid), /Inputs changed/);
+    assert.equal((await store.sql`SELECT attempts FROM job_work_stages WHERE id=${stale.id}`)[0].attempts, 0);
+    // A valid-looking existing ID still cannot bypass review.
+    await store.sql`UPDATE resume_truth_claims SET review_status='unreviewed' WHERE id='skills.1'`;
+    const unreviewed = await save(await packet(), { ...valid, sections: [{ kind: 'skills', claimIds: ['skills.1'] }] });
+    assert.equal(unreviewed.issues[0].code, 'CLAIM_NOT_REVIEWED');
+  } finally { await store.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('selection prerequisites give safe guidance without inventing missing reviewed metadata', async () => {
+  const { root, store, call } = await setup();
+  try {
+    const leadId = await addVerified(call);
+    const valid = { template: TEMPLATE_VERSION, sections: [{ kind: 'experience', claimIds: ['experience.1.claim.1'] }], outreach: false, unresolved: [] };
+    for (const [id, code, guidance] of [
+      ['profile.name', 'MISSING_REVIEWED_NAME', 'profile.name'],
+      ['profile.email', 'MISSING_REVIEWED_CONTACT', 'profile.email'],
+      ['experience.1.dates', 'MISSING_REVIEWED_ROLE_METADATA', 'experience.N.dates'],
+    ]) {
+      await store.sql`UPDATE resume_truth_claims SET review_status='unreviewed' WHERE id=${id}`;
+      const assessment: any = await call({ method: 'workflow.packet', args: [{ leadId, stage: 'assessment' }] });
+      await call({ method: 'workflow.save', args: [{ packetId: assessment.id, inputHash: assessment.inputHash,
+        result: { recommendation: 'candidate', reasons: [{ text: 'Fictional fit.', evidence: 'cross-functional programs' }], uncertainties: [], claimIds: [] } }] });
+      const p: any = await call({ method: 'workflow.packet', args: [{ leadId, stage: 'selection' }] });
+      const rejected: any = await call({ method: 'workflow.save', args: [{ packetId: p.id, inputHash: p.inputHash, result: valid }] });
+      assert.equal(rejected.state, 'pending'); assert.equal(rejected.issues[0].code, code);
+      assert.ok(rejected.issues[0].guidance.includes(guidance));
+      assert.doesNotMatch(JSON.stringify(rejected), /Jordan|jordan@|Maple Analytics|09\/2022/);
+      await store.sql`UPDATE resume_truth_claims SET review_status='reviewed' WHERE id=${id}`;
+      await assert.rejects(call({ method: 'workflow.save', args: [{ packetId: p.id, inputHash: p.inputHash, result: valid }] }), /Inputs changed/);
+    }
+    // Oversized candidate text is removable; the response contract itself must survive packet compaction.
+    await store.sql`UPDATE resume_truth_claims SET claim=${'cross-functional '.repeat(2000)} WHERE id='experience.1.claim.1'`;
+    const assessment: any = await call({ method: 'workflow.packet', args: [{ leadId, stage: 'assessment' }] });
+    await call({ method: 'workflow.save', args: [{ packetId: assessment.id, inputHash: assessment.inputHash,
+      result: { recommendation: 'candidate', reasons: [{ text: 'Fictional fit.', evidence: 'cross-functional programs' }], uncertainties: [], claimIds: [] } }] });
+    const compact: any = await call({ method: 'workflow.packet', args: [{ leadId, stage: 'selection' }] });
+    assert.ok(payloadBytes(compact) <= PACKET_LIMIT);
+    assert.ok(compact.responseContract); assert.equal(compact.selectionRules.length, 3);
+    const [saved] = await store.sql`SELECT posting_text FROM job_leads WHERE id=${leadId}`;
+    assert.equal(compact.posting.text, saved.posting_text);
+  } finally { await store.close(); await rm(root, { recursive: true, force: true }); }
+});
+
 test('compact packets, exact ordering, separate exports, cache reuse, approval, invalidation and restore persistence', async () => {
   const { root, store, call } = await setup();
   let reopened: JobdeskStore | undefined;
@@ -53,13 +175,14 @@ test('compact packets, exact ordering, separate exports, cache reuse, approval, 
     const legacy: any = { leadId: id, posting: POSTING, reviewedTruths: claims };
     const ratio = (payloadBytes(assessment) + payloadBytes(selection)) / payloadBytes(legacy);
     assert.ok(ratio <= 0.5, `Compact full assessment+selection payload ${payloadBytes(assessment) + payloadBytes(selection)} vs legacy ${payloadBytes(legacy)}; ratio ${ratio}`);
-    console.log(JSON.stringify({ benchmark: 'fixed-fictional-resume', legacyPreparationBytes: payloadBytes(legacy), compactPreparationBytes: payloadBytes(assessment) + payloadBytes(selection), reductionPercent: Math.round((1 - ratio) * 100), inputTokens: null, providerCost: null }));
     const hidden = claims.find((c: any) => !assessment.candidates.some((candidate: any) => candidate.id === c.id));
     assert.ok(hidden, 'candidate shortlist is smaller than the approved bank');
     const lookup: any = await call({ method: 'workflow.claims', args: [{ ids: [hidden.id], catalogHash: assessment.catalogHash }] });
     assert.equal(lookup.claims[0].id, hidden.id, 'claims outside the initial shortlist remain accessible');
     assert.ok((payloadBytes(assessment) + payloadBytes(selection) + payloadBytes(lookup)) / payloadBytes(legacy) <= .5,
       'the full packet comparison still clears 50% after extra evidence retrieval');
+    console.log(JSON.stringify({ benchmark: 'fixed-fictional-resume', legacyPreparationBytes: payloadBytes(legacy), compactPreparationBytes: payloadBytes(assessment) + payloadBytes(selection),
+      previousSelectionHintLimit: 8, selectionHints: selection.candidates.length, extraRetrievalBytes: payloadBytes(lookup), withRetrievalRatio: (payloadBytes(assessment) + payloadBytes(selection) + payloadBytes(lookup)) / payloadBytes(legacy), inputTokens: null, providerCost: null }));
     const built: any = await call({ method: 'workflow.build', args: [{ leadId: id }] });
     assert.equal(built.state, 'current'); assert.equal(built.artifacts.length, 2);
     assert.equal(built.validation.visual, 'pending');

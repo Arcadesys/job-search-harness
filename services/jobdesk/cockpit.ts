@@ -4,7 +4,7 @@ import { JobdeskError } from './errors';
 /** Assistant activity and compact read models for the cockpit. Summaries are
  * structural only: counts, states and stage names, never claim or posting text. */
 export type ActivityKind = 'read' | 'saved' | 'lease' | 'collect' | 'needs_you' | 'receipt' | 'error';
-type Described = { kind: ActivityKind; summary: string; leadId?: string; itemId?: string; packetId?: string; manifestId?: string };
+type Described = { kind: ActivityKind; summary: string; ok?: boolean; leadId?: string; itemId?: string; packetId?: string; manifestId?: string };
 
 /** Calls that are not assistant work and would only add noise. */
 const SILENT = new Set(['health', 'browser.open', 'owner.shutdown', 'cockpit.live']);
@@ -35,10 +35,20 @@ export function describeCall(method: string, args: unknown, result: any): Descri
     case 'submission.uncertain': return { kind: 'needs_you', itemId: str(result?.id, UUID), summary: 'Submission uncertain. Blocked for reconciliation.' };
     case 'submission.record': return { kind: 'receipt', itemId, summary: 'Receipt saved. Counted in weekly review.' };
     case 'workflow.packet': return { kind: 'read', leadId, summary: `${input.stage === 'selection' ? 'Selection' : 'Assessment'} packet, ${kb(result)}.` };
-    case 'workflow.save': return { kind: 'saved', packetId: str(input.packetId, UUID),
-      summary: input.result?.recommendation ? `Recommendation: ${String(input.result.recommendation)}. ${plural(count(input.result.reasons), 'reason')}, ${plural(count(input.result.uncertainties), 'uncertainty')}.`
+    case 'workflow.save': {
+      const packetId = str(input.packetId, UUID);
+      if (result?.state !== 'complete' || result?.error) return {
+        kind: result?.state === 'pending' ? 'error' : 'needs_you', ok: false, packetId,
+        summary: result?.state === 'pending' ? 'Work result rejected. One repair is available.'
+          : result?.state === 'needs_attention' ? 'Work result rejected. Needs your attention.'
+            : 'Work result completion was not confirmed. Needs your attention.',
+      };
+      if (result.reused) return { kind: 'read', packetId, summary: 'Existing completed work reused.' };
+      return { kind: 'saved', packetId,
+        summary: input.result?.recommendation ? `Recommendation: ${String(input.result.recommendation)}. ${plural(count(input.result.reasons), 'reason')}, ${plural(count(input.result.uncertainties), 'uncertainty')}.`
         : Array.isArray(input.result?.sections) ? `Selection saved: ${plural(input.result.sections.length, 'section')}, ${plural(input.result.sections.reduce((n: number, s: any) => n + count(s?.claimIds), 0), 'claim ID')}.`
           : 'Work result saved.' };
+    }
     case 'workflow.claims': return { kind: 'read', summary: `Returned ${plural(count(result?.claims), 'approved claim')}.` };
     case 'workflow.sources': return { kind: 'read', summary: `Read sources for ${plural(count(result?.claims), 'claim')}.` };
     case 'workflow.posting': return { kind: 'read', leadId, summary: `Read posting segment at offset ${Number(input.offset ?? 0).toLocaleString('en-US')}.` };
@@ -83,7 +93,7 @@ export async function recordActivity(sql: Sql, input: { tool?: string; method: s
   if (!leadId && described.manifestId) leadId = (await sql`SELECT lead_id FROM job_material_manifests WHERE id=${described.manifestId}`)[0]?.lead_id;
   if (!leadId && itemId) leadId = (await sql`SELECT lead_id FROM job_application_batch_items WHERE id=${itemId}`)[0]?.lead_id;
   await sql`INSERT INTO jobdesk_activity(tool,method,ok,kind,summary,lead_id,item_id)
-    VALUES(${tool},${input.method},${!input.error},${described.kind},${described.summary.slice(0, 300)},${leadId ?? null},${itemId ?? null})`;
+    VALUES(${tool},${input.method},${described.ok ?? !input.error},${described.kind},${described.summary.slice(0, 300)},${leadId ?? null},${itemId ?? null})`;
   await sql`DELETE FROM jobdesk_activity WHERE id <= (SELECT max(id) - ${ACTIVITY_LIMIT} FROM jobdesk_activity)`;
 }
 

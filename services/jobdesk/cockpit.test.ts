@@ -12,6 +12,7 @@ import { createService, initializeService } from './service';
 import { leadIdForUrl } from '../../lib/job-discovery';
 import { tempRoot } from '../../tests/fixtures/temp-root';
 import { sampleResume } from '../../tests/fixtures/sample-resume';
+import { TEMPLATE_VERSION } from '../../lib/job-workflow';
 
 test('worker calls become structural activity, live leases and pipeline stages', async () => {
   const root = await tempRoot('jobdesk-cockpit-');
@@ -106,9 +107,73 @@ test('current main stores upgrade to cockpit activity without changing saved tru
 test('activity summaries never carry claim or posting text', () => {
   const secret = 'Synthetic private wording that must not be logged';
   const saved = describeCall('workflow.save', [{ packetId: crypto.randomUUID(), inputHash: 'a'.repeat(64),
-    result: { recommendation: 'candidate', reasons: [{ text: secret, evidence: secret }], uncertainties: [] } }], {});
+    result: { recommendation: 'candidate', reasons: [{ text: secret, evidence: secret }], uncertainties: [] } }], { state: 'complete' });
   assert.equal(saved.summary, 'Recommendation: candidate. 1 reason, 0 uncertainties.');
   const posting = describeCall('workflow.savePosting', [{ leadId: 'b'.repeat(64), text: secret, sourceNote: secret }], {});
   assert.doesNotMatch(posting.summary, /Synthetic/);
   assert.equal(describeCall('workflow.claims', [{ query: secret }], { claims: [{ text: secret }] }).summary, 'Returned 1 approved claim.');
+});
+
+test('selection validation failures, correction and replay persist truthful activity', async () => {
+  const root = await tempRoot('jobdesk-save-activity-');
+  let store: JobdeskStore | undefined;
+  try {
+    store = await JobdeskStore.open(root);
+    await initializeService(store);
+    const call = createService(store);
+    await call({ method: 'truth.importResume', args: [sampleResume] });
+    await store.sql`UPDATE resume_truth_claims SET review_status='reviewed'`;
+    const url = 'https://example.test/jobs/save-activity', leadId = leadIdForUrl(url);
+    await call({ method: 'leads.add', args: [{ url, title: 'Fictional validation fixture' }] });
+    const posting = 'Fictional cross-functional programs. '.repeat(10);
+    await call({ method: 'draft.posting', args: [leadId, posting, 'Synthetic posting source for activity validation.'] });
+    const assessment: any = await call({ method: 'workflow.packet', args: [{ leadId, stage: 'assessment' }] });
+    await call({ method: 'workflow.save', args: [{ packetId: assessment.id, inputHash: assessment.inputHash,
+      result: { recommendation: 'candidate', reasons: [{ text: 'Fictional fit', evidence: 'cross-functional programs' }], uncertainties: [], claimIds: [] } }] });
+    const packet: any = await call({ method: 'workflow.packet', args: [{ leadId, stage: 'selection' }] });
+    const valid = { template: TEMPLATE_VERSION, sections: [{ kind: 'experience', claimIds: ['experience.1.claim.1'] }], outreach: false, unresolved: [] };
+    const save = async (current: any, result: unknown) => {
+      const args = [{ packetId: current.id, inputHash: current.inputHash, result }];
+      const outcome: any = await call({ method: 'workflow.save', args });
+      await store!.run(sql => recordActivity(sql, { tool: 'job_hunt_save_work_result', method: 'workflow.save', args, result: outcome }));
+      return outcome;
+    };
+    const duplicate = { ...valid, sections: [{ kind: 'experience', claimIds: ['experience.1.claim.1', 'experience.1.claim.1'] }] };
+    assert.equal((await save(packet, duplicate)).state, 'pending');
+    assert.equal((await store.sql`SELECT attempts FROM job_work_stages WHERE id=${packet.id}`)[0].attempts, 1);
+    assert.equal((await save(packet, valid)).state, 'complete');
+    // A complete packet reuses the persisted result, not the new caller's payload.
+    assert.equal((await save(packet, { sections: [{ claimIds: ['not-saved'] }] })).reused, true);
+    assert.equal((await store.sql`SELECT attempts FROM job_work_stages WHERE id=${packet.id}`)[0].attempts, 2);
+    const repair: any = await call({ method: 'workflow.packet', args: [{ leadId, stage: 'selection', revision: 'Fictional revision for bounded rejection.' }] });
+    assert.equal((await save(repair, { ...valid, sections: [{ kind: 'invalid-kind', claimIds: ['experience.1.claim.1'] }] })).state, 'pending');
+    assert.equal((await save(repair, {})).state, 'needs_attention');
+    assert.equal((await save(repair, valid)).state, 'needs_attention');
+    await store.close();
+    store = await JobdeskStore.open(root);
+    const events = await store.sql`SELECT ok,kind,summary,lead_id FROM jobdesk_activity ORDER BY id`;
+    assert.deepEqual(events.map(e => [e.ok, e.kind]), [
+      [false, 'error'], [true, 'saved'], [true, 'read'], [false, 'error'], [false, 'needs_you'], [false, 'needs_you'],
+    ]);
+    assert.equal(events[1].summary, 'Selection saved: 1 section, 1 claim ID.');
+    assert.equal(events[2].summary, 'Existing completed work reused.');
+    for (const event of events) {
+      assert.equal(event.lead_id, leadId);
+      assert.doesNotMatch(event.summary, /not-saved|invalid-kind|experience\.1|Fictional|cross-functional/);
+      if (!event.ok) assert.doesNotMatch(event.summary, /saved|complete/i);
+    }
+  } finally {
+    await store?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('unconfirmed and error-bearing workflow outcomes never claim success or expose errors', () => {
+  const args = [{ packetId: crypto.randomUUID(), result: { sections: [{ claimIds: ['private-fixture'] }] } }];
+  for (const result of [undefined, {}, { state: 'complete', error: 'private-fixture' }]) {
+    const described = describeCall('workflow.save', args, result);
+    assert.equal(described.ok, false);
+    assert.equal(described.kind, 'needs_you');
+    assert.doesNotMatch(described.summary, /saved|private-fixture/i);
+  }
 });
